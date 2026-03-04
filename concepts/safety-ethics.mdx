@@ -1,0 +1,250 @@
+---
+title: Safety and ethics
+description: Understand safety checks, crisis resources, ethical considerations, and content moderation in The Fork
+---
+
+<Warning>
+  The Fork intentionally surfaces uncomfortable truths about life choices. If you're in crisis or feeling unsafe, **stop now** and seek help. Crisis resources are listed below.
+</Warning>
+
+The Fork is designed to be direct, provocative, and emotionally honest—but not harmful. This page explains the safety checks, ethical boundaries, and crisis resources built into the system.
+
+## Safety checks
+
+Every user message is validated before being sent to the LLM. The backend runs a lightweight heuristic check via `_safety_quick_check` (server.py:150-188).
+
+### Self-harm detection
+
+The system scans for self-harm and suicide risk cues:
+
+```python
+def _safety_quick_check(text: str) -> Optional[str]:
+    t = (text or "").lower()
+
+    # Self-harm / suicide risk cues (lightweight heuristic)
+    self_harm_markers = [
+        "kill myself",
+        "suicide",
+        "end my life",
+        "take my life",
+        "i want to die",
+        "i'm going to die",
+        "hurt myself",
+        "self harm",
+        "cut myself",
+    ]
+    if any(m in t for m in self_harm_markers):
+        return (
+            "I'm not going to help with anything that harms you. But I'm here with you. "
+            "Right now, slow down—take one breath in for 4, hold for 4, out for 6. "
+            "If you're in immediate danger or feel like you might act on this, please call your local emergency number now. "
+            "If you're in the U.S. or Canada, you can call/text **988**. In the U.K. & ROI: Samaritans **116 123**. "
+            "If you tell me where you are (country), I'll point you to the right option. "
+            "Also—what's the smallest thing that would make the next 10 minutes safer?"
+        )
+```
+
+If any marker is detected, the system:
+
+1. **Refuses to continue the conversation**
+2. **Provides crisis resources** (988 for U.S./Canada, Samaritans 116 123 for U.K./ROI)
+3. **Offers grounding instructions** (breathing technique)
+4. **Asks a safety-focused question** ("What's the smallest thing that would make the next 10 minutes safer?")
+
+This response is returned immediately—**the LLM is never called** when self-harm markers are detected.
+
+### Hate and harassment detection
+
+The system also blocks dehumanizing and hate-based language:
+
+```python
+# Simple hate/harassment block (non-exhaustive; just to avoid the worst)
+hate_markers = [
+    "gas the",
+    "exterminate",
+    "nazi",
+    "kkk",
+]
+if any(m in t for m in hate_markers):
+    return (
+        "No. I'm not doing hate or dehumanizing stuff. "
+        "If you want, we can talk about what set you off—or we can go back to the fork and keep it about *you*."
+    )
+```
+
+This list is intentionally minimal and non-exhaustive. It's designed to block the most egregious content while allowing the system to remain conversational.
+
+<Warning>
+  These safety checks are heuristic and lightweight. They are **not a substitute for professional moderation** or crisis intervention services. If you're deploying The Fork publicly, you must add robust content moderation.
+</Warning>
+
+## Ethical boundaries
+
+The system prompt includes explicit ethical guardrails that apply at all intensity levels.
+
+### No abuse, ever
+
+From the system prompt (server.py:272):
+
+```
+Still not abusive: no slurs, no threats, no demeaning identity attacks.
+```
+
+This rule is repeated in every intensity level's tone instructions:
+
+- **Mild**: "No cruelty."
+- **Savage**: "but never abusive: no slurs, threats, or demeaning identity attacks."
+- **Brutal**: "but never abusive: no slurs, threats, harassment, or demeaning identity attacks."
+
+### What's prohibited
+
+At all intensity levels, "Other You" will never:
+
+- Use slurs (racial, homophobic, ableist, etc.)
+- Make threats or encourage violence
+- Attack your identity or personhood
+- Encourage self-harm or suicide
+- Engage in sexual harassment or unwanted sexual content
+- Dehumanize based on group membership
+
+### What's allowed (within intensity)
+
+The Fork is designed to be **direct and emotionally honest**. "Other You" can:
+
+- Use profanity (per intensity level)
+- Challenge your rationalizations and avoidance
+- Surface uncomfortable truths about your choices
+- Express anger, frustration, or disappointment (as a character)
+- Ask hard questions that force specificity
+
+See [Intensity levels](/concepts/intensity-levels) for tone examples.
+
+## Crisis resources
+
+If you're reading this and need help now:
+
+### United States and Canada
+- **988 Suicide & Crisis Lifeline**: Call or text **988**
+- Available 24/7, free, confidential
+- Website: [988lifeline.org](https://988lifeline.org)
+
+### United Kingdom and Republic of Ireland
+- **Samaritans**: Call **116 123** (free)
+- Available 24/7
+- Email: jo@samaritans.org
+- Website: [samaritans.org](https://www.samaritans.org)
+
+### International
+- **International Association for Suicide Prevention**: [iasp.info/resources/Crisis_Centres](https://www.iasp.info/resources/Crisis_Centres/)
+- **Befrienders Worldwide**: [befrienders.org](https://www.befrienders.org)
+
+### Emergency
+If you're in immediate danger, **call your local emergency number** (911 in the U.S., 999 in the U.K., 112 in the EU).
+
+## Limitations and risks
+
+The Fork is an experimental conversational tool. It is **not**:
+
+- A therapist or counselor
+- A suicide prevention hotline
+- A substitute for professional mental health care
+- A safe space for processing trauma without support
+
+### Known risks
+
+1. **Emotional distress**: The Fork surfaces hard truths. This can be painful, especially at higher intensity levels.
+2. **Triggering content**: Even with safety checks, the conversation may touch on sensitive topics (loss, regret, fear, failure).
+3. **False confidence**: The persona is convincing, but it's an LLM role-play—not a real alternate version of you.
+4. **No persistent support**: Conversations are stateless. "Other You" won't remember you between sessions.
+
+## Recommendations for safe use
+
+1. **Start with mild intensity** if you're exploring for the first time.
+2. **Use The Fork when you're stable**, not in crisis.
+3. **Have a support person available** if you're processing a heavy decision.
+4. **Stop if it feels harmful**. You can close the tab at any time.
+5. **Seek professional help** if you're in distress. The Fork is not a substitute for therapy.
+
+## For developers and deployers
+
+If you're self-hosting or deploying The Fork:
+
+### Add robust content moderation
+
+The built-in safety checks are **minimal**. For public deployments, you must:
+
+- Use a professional moderation API (e.g., OpenAI Moderation, Perspective API)
+- Log and review flagged messages
+- Implement rate limiting to prevent abuse
+- Add user reporting and blocking features
+- Have a human review process for edge cases
+
+### Conduct an ethics review
+
+Before deploying, consider:
+
+- Who is your audience? What are their vulnerabilities?
+- What happens if someone in crisis uses the tool?
+- How will you handle reports of harm?
+- Do you have legal and ethical review from experts?
+- Are you prepared to provide crisis resources and support?
+
+### Update the safety markers
+
+The current markers are U.S.-centric and non-exhaustive. Update `_safety_quick_check` to:
+
+- Include markers for your audience's language and culture
+- Add more comprehensive self-harm and violence detection
+- Integrate with a professional moderation service
+
+<Accordion title="Example: Adding custom safety markers">
+
+```python
+def _safety_quick_check(text: str) -> Optional[str]:
+    t = (text or "").lower()
+
+    # Add your custom markers here
+    custom_markers = [
+        "your custom marker",
+        "another marker",
+    ]
+    if any(m in t for m in custom_markers):
+        return (
+            "Your custom safety response here. "
+            "Include crisis resources for your audience."
+        )
+
+    # Keep the existing checks
+    self_harm_markers = [...]
+    # ...
+```
+
+</Accordion>
+
+### Disclose limitations to users
+
+Your deployment should clearly state:
+
+- This is an AI role-play tool, not a real person
+- It is not a substitute for therapy or crisis intervention
+- Conversations are not stored (or, if you add persistence, explain your data policy)
+- Crisis resources are available [link]
+- Users can report harmful content [link]
+
+## Why these choices were made
+
+The Fork is designed to:
+
+1. **Surface hard truths** about life choices—but not at the cost of user safety.
+2. **Allow emotional intensity**—but prohibit abuse, slurs, and dehumanization.
+3. **Respect user agency**—conversations are stateless, and you can stop at any time.
+4. **Provide immediate safety resources**—when self-harm markers are detected, the system prioritizes de-escalation over role-play.
+
+These are design tradeoffs, not perfect solutions. The Fork is **experimental** and should be used with care.
+
+## Next steps
+
+- Understand the system prompt in [How it works](/concepts/how-it-works)
+- Learn about intensity levels in [Intensity levels](/concepts/intensity-levels)
+- Review the API safety flow in [API reference](/api/chat)
+- Report issues or suggest improvements at [GitHub](https://github.com/CassieMarie0728/parallel-you-1) (replace with your repo URL)

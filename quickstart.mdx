@@ -1,80 +1,504 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get The Fork running locally with Docker or manual setup
 ---
 
-## Get started in three steps
+Get The Fork running in your local development environment. Choose between Docker for quick setup or local development for a more flexible workflow.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have the following installed:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- **Node.js 18+** with npm or Yarn
+- **Python 3.11+**
+- **Docker & Docker Compose** (optional, for containerized setup)
+- **MongoDB** (optional, only if not using Docker)
+- **Emergent LLM API Key** - Required for chat functionality. Get yours at [emergent.sh](https://emergent.sh)
 
-### Step 2: Deploy your changes
+<Warning>
+  **Trigger Warning**: This app surfaces uncomfortable material about life choices. If you're in crisis, stop and seek help:
+  - U.S./Canada: 988 (call/text)
+  - U.K. & ROI: Samaritans 116 123
+</Warning>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Quick start with Docker
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+The fastest way to get The Fork running is with Docker Compose, which spins up MongoDB, the backend API, and the frontend dev server with a single command.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/CassieMarie0728/the-fork.git
+    cd the-fork
+    ```
+  </Step>
 
-### Step 3: Go live
+  <Step title="Set up environment variables">
+    Create `.env` files for both backend and frontend:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
+    ```
+
+    Update `backend/.env` with your Emergent LLM API key:
+
+    ```bash
+    EMERGENT_LLM_KEY=your_actual_api_key_here
+    ```
+
+    <Note>
+      You can also set the API key directly in your shell:
+      ```bash
+      export EMERGENT_LLM_KEY=your_actual_api_key_here
+      ```
+    </Note>
+  </Step>
+
+  <Step title="Start all services">
+    ```bash
+    docker-compose up --build
+    ```
+
+    This command will:
+    - Build the backend and frontend Docker images
+    - Start MongoDB on port 27017
+    - Start the backend API on port 8000
+    - Start the frontend dev server on port 3000
+  </Step>
+
+  <Step title="Access the application">
+    Once all services are running, open your browser:
+
+    - **Frontend**: [http://localhost:3000](http://localhost:3000)
+    - **Backend API**: [http://localhost:8000](http://localhost:8000)
+    - **API Docs**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+  </Step>
+</Steps>
+
+### Managing Docker services
+
+<CodeGroup>
+```bash Stop services
+docker-compose down
+```
+
+```bash Stop and remove volumes
+docker-compose down -v
+```
+
+```bash View logs
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f mongo
+```
+
+```bash Rebuild images
+docker-compose up --build
+```
+</CodeGroup>
+
+## Local development setup
+
+For a more flexible development environment with hot reload and direct access to the codebase, set up the backend and frontend manually.
+
+### Backend setup
+
+<Steps>
+  <Step title="Navigate to backend directory">
+    ```bash
+    cd backend
+    ```
+  </Step>
+
+  <Step title="Create environment file">
+    Copy the example file and configure your environment:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Update `backend/.env` with your configuration:
+
+    ```bash
+    # MongoDB Connection
+    MONGO_URL="mongodb://localhost:27017"
+    DB_NAME="test_database"
+
+    # CORS Configuration
+    CORS_ORIGINS="*"
+
+    # Emergent LLM Integration (REQUIRED)
+    EMERGENT_LLM_KEY=your_emergent_llm_key_here
+
+    # Server Configuration (optional)
+    SERVER_HOST="0.0.0.0"
+    SERVER_PORT=8000
+    LOG_LEVEL="INFO"
+    ```
+
+    <Warning>
+      The `EMERGENT_LLM_KEY` is required for chat functionality. Without it, the `/api/chat` endpoint will return a 500 error.
+    </Warning>
+  </Step>
+
+  <Step title="Install Python dependencies">
+    <CodeGroup>
+    ```bash pip
+    python -m pip install -r requirements.txt
+    ```
+
+    ```bash virtualenv
+    python -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run tests">
+    ```bash
+    pytest
+    ```
+
+    Run tests with coverage:
+    ```bash
+    pytest --cov=server
+    ```
+  </Step>
+
+  <Step title="Start the backend server">
+    ```bash
+    uvicorn server:app --reload
+    ```
+
+    The backend will start at:
+    - **API**: [http://localhost:8000/api/](http://localhost:8000/api/)
+    - **Swagger UI**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+
+    <Note>
+      The `--reload` flag enables hot reload for development. Remove it for production deployments.
+    </Note>
+  </Step>
+</Steps>
+
+### Frontend setup
+
+<Steps>
+  <Step title="Navigate to frontend directory">
+    ```bash
+    cd frontend
+    ```
+  </Step>
+
+  <Step title="Create environment file">
+    Copy the example file and configure your environment:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Update `frontend/.env` to point to your local backend:
+
+    ```bash
+    # Backend API URL
+    REACT_APP_BACKEND_URL=http://localhost:8000
+
+    # WebSocket Configuration (for development)
+    WDS_SOCKET_PORT=443
+
+    # Feature Flags
+    ENABLE_HEALTH_CHECK=false
+    ```
+
+    <Note>
+      For local development, ensure `REACT_APP_BACKEND_URL` points to `http://localhost:8000`.
+    </Note>
+  </Step>
+
+  <Step title="Install dependencies">
+    <CodeGroup>
+    ```bash npm
+    npm install
+    ```
+
+    ```bash yarn
+    yarn install
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run E2E tests">
+    <CodeGroup>
+    ```bash npm
+    npm run test:e2e
+    ```
+
+    ```bash yarn
+    yarn test:e2e
+    ```
+    </CodeGroup>
+
+    Run tests with UI:
+    <CodeGroup>
+    ```bash npm
+    npm run test:e2e:ui
+    ```
+
+    ```bash yarn
+    yarn test:e2e:ui
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start the development server">
+    <CodeGroup>
+    ```bash npm
+    npm start
+    ```
+
+    ```bash yarn
+    yarn start
+    ```
+    </CodeGroup>
+
+    The frontend will start at [http://localhost:3000](http://localhost:3000)
+  </Step>
+</Steps>
+
+### MongoDB setup (optional)
+
+If you're running locally without Docker, you'll need MongoDB running:
+
+<CodeGroup>
+```bash Local MongoDB
+# Start MongoDB with a custom data directory
+mongod --dbpath ./data
+```
+
+```bash Docker MongoDB only
+# Run MongoDB in a Docker container
+docker run -d \
+  -p 27017:27017 \
+  --name fork-mongo \
+  -e MONGO_INITDB_ROOT_USERNAME=admin \
+  -e MONGO_INITDB_ROOT_PASSWORD=password \
+  -e MONGO_INITDB_DATABASE=fork_database \
+  mongo:7.0
+```
+
+```bash Check connection
+# Test MongoDB connection
+mongosh
+```
+</CodeGroup>
+
+<Note>
+  If using Docker MongoDB with authentication, update your `backend/.env`:
+  ```bash
+  MONGO_URL="mongodb://admin:password@localhost:27017"
+  DB_NAME="fork_database"
+  ```
+</Note>
+
+## Testing the API
+
+Once your backend is running, you can test the API with curl:
+
+```bash Health check
+curl http://localhost:8000/api/
+```
+
+```bash Chat endpoint
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose engineering instead of art.",
+    "intensity": "savage",
+    "messages": [
+      {"role": "user", "content": "Do you regret it?"}
+    ],
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+<Note>
+  Intensity options: `mild`, `savage`, or `brutal`. The persona adjusts its tone accordingly but maintains character boundaries defined in `backend/server.py`.
+</Note>
+
+## Environment variables reference
+
+### Backend variables
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `MONGO_URL` | Yes | - | MongoDB connection string (e.g., `mongodb://localhost:27017`) |
+| `DB_NAME` | Yes | - | MongoDB database name |
+| `EMERGENT_LLM_KEY` | Yes | - | Emergent LLM API key for chat functionality |
+| `CORS_ORIGINS` | No | `*` | Comma-separated list of allowed origins |
+| `SERVER_HOST` | No | `0.0.0.0` | Server bind address |
+| `SERVER_PORT` | No | `8000` | Server port |
+| `LOG_LEVEL` | No | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
+
+### Frontend variables
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `REACT_APP_BACKEND_URL` | Yes | - | Backend API URL (e.g., `http://localhost:8000`) |
+| `WDS_SOCKET_PORT` | No | `443` | WebSocket port for hot reload |
+| `ENABLE_HEALTH_CHECK` | No | `false` | Enable frontend health check endpoint |
+
+## Troubleshooting
+
+### Backend won't start
+
+<Steps>
+  <Step title="Check Python version">
+    ```bash
+    python --version
+    # Should output Python 3.11 or higher
+    ```
+
+    If your version is too old, install Python 3.11+ from [python.org](https://www.python.org/downloads/).
+  </Step>
+
+  <Step title="Verify EMERGENT_LLM_KEY is set">
+    ```bash
+    cat backend/.env | grep EMERGENT_LLM_KEY
+    ```
+
+    Ensure it's not the placeholder value `your_emergent_llm_key_here`.
+  </Step>
+
+  <Step title="Check for port conflicts">
+    ```bash
+    lsof -i :8000
+    ```
+
+    If another process is using port 8000, either stop it or change `SERVER_PORT` in your `.env` file.
+  </Step>
+
+  <Step title="Check Docker logs">
+    If using Docker:
+    ```bash
+    docker-compose logs backend
+    ```
+  </Step>
+</Steps>
+
+### Frontend won't start
+
+<Steps>
+  <Step title="Check Node.js version">
+    ```bash
+    node --version
+    # Should output v18.x or higher
+    ```
+  </Step>
+
+  <Step title="Clear dependencies and reinstall">
+    ```bash
+    rm -rf node_modules yarn.lock
+    yarn install
+    ```
+
+    Or with npm:
+    ```bash
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
+  </Step>
+
+  <Step title="Check for port conflicts">
+    ```bash
+    lsof -i :3000
+    ```
+
+    If another process is using port 3000, stop it or change the port in `package.json`.
+  </Step>
+
+  <Step title="Verify backend URL">
+    Ensure `REACT_APP_BACKEND_URL` in `frontend/.env` matches your backend address:
+    ```bash
+    cat frontend/.env | grep REACT_APP_BACKEND_URL
+    ```
+  </Step>
+</Steps>
+
+### MongoDB connection issues
+
+<Steps>
+  <Step title="Check MongoDB is running">
+    ```bash
+    # For local MongoDB
+    mongosh
+
+    # For Docker
+    docker ps | grep mongo
+    ```
+  </Step>
+
+  <Step title="Verify connection string">
+    Check your `MONGO_URL` in `backend/.env`:
+    - Local: `mongodb://localhost:27017`
+    - Docker: `mongodb://admin:password@localhost:27017`
+    - Docker Compose: `mongodb://admin:password@mongo:27017` (uses service name)
+  </Step>
+
+  <Step title="Check Docker logs">
+    ```bash
+    docker-compose logs mongo
+    ```
+  </Step>
+</Steps>
+
+### CORS errors
+
+If you see CORS errors in your browser console:
+
+1. Update `CORS_ORIGINS` in `backend/.env`:
+   ```bash
+   CORS_ORIGINS="http://localhost:3000,http://localhost:3001"
+   ```
+
+2. Restart the backend server.
+
+<Warning>
+  Never use `CORS_ORIGINS="*"` in production. Always specify allowed origins explicitly.
+</Warning>
+
+### API returns 500 errors
+
+Common causes:
+
+- **Missing `EMERGENT_LLM_KEY`**: Check your `backend/.env` file
+- **Invalid API key**: Verify your key at [emergent.sh](https://emergent.sh)
+- **LLM service down**: Check the backend logs for specific error messages
+
+```bash
+# Check backend logs
+docker-compose logs backend
+# Or if running locally:
+# Check terminal where uvicorn is running
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="API reference" icon="code" href="/api/overview">
+    Explore the backend API endpoints and request/response schemas
+  </Card>
+  <Card title="Docker guide" icon="docker" href="/deployment/docker">
+    Learn about production deployment with Docker
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/development/architecture">
+    Understand The Fork's system design and components
+  </Card>
+  <Card title="Testing" icon="vial" href="/development/testing">
+    Run backend and frontend tests
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

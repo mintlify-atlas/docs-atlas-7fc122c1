@@ -1,0 +1,209 @@
+---
+title: Chat endpoint
+description: Send messages and receive responses from your alternate self
+---
+
+## Endpoint
+
+```http
+POST /api/chat
+```
+
+Send a message and receive a response from your alternate self based on a life decision you didn't make.
+
+## Request body
+
+<ParamField path="forkStatement" type="string" required>
+  The life decision that split the user's path. Be specific and personal about the choice you made versus the one you didn't.
+  
+  **Example:** `"I chose to move to the city instead of staying in my hometown"`
+</ParamField>
+
+<ParamField path="intensity" type="enum" default="mild">
+  How direct and provocative the AI should be. Choose from:
+  
+  - `"mild"`: Supportive and reflective, but honest. Light profanity allowed.
+  - `"savage"`: Blunt and truth-forward. Calls out avoidance. More profanity.
+  - `"brutal"`: No comfort or flinching. Extremely direct. Uses profanity freely when appropriate.
+</ParamField>
+
+<ParamField path="messages" type="array" default="[]">
+  Conversation history (array of messages). Each message contains:
+  
+  <Expandable title="ChatMessage properties">
+    <ResponseField name="role" type="enum" required>
+      The sender of the message: 'user' or 'assistant'
+    </ResponseField>
+    
+    <ResponseField name="content" type="string" required>
+      The message content
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="sessionId" type="string" required>
+  Unique session identifier (for tracking without storage). Typically a UUID format.
+  
+  **Example:** `"550e8400-e29b-41d4-a716-446655440000"`
+</ParamField>
+
+## Response
+
+<ResponseField name="reply" type="string">
+  The alter-ego's response to the user's message
+</ResponseField>
+
+## Intensity levels explained
+
+### Mild
+Supportive and reflective, grounded in reality but still honest. Uses light profanity sparingly if it fits (e.g., "damn", "hell", "bullshit"), but keeps it caring. No cruelty.
+
+### Savage
+Blunt and truth-forward. Calls out avoidance and self-deception. Profanity is allowed and can be frequent (e.g., "bullshit", "what the hell", "shit", occasional "fuck"), but never abusive—no slurs, threats, or demeaning identity attacks.
+
+### Brutal
+No comfort, no flinching. Extremely direct. Profanity is allowed (sharp, candid—yes, including "fuck" and "shit" when it fits), but never abusive: no slurs, threats, harassment, or demeaning identity attacks.
+
+## Safety features
+
+The endpoint includes automatic safety checks that detect and respond to:
+
+### Self-harm detection
+
+If your message contains self-harm indicators (e.g., "kill myself", "suicide", "end my life"), the API returns crisis resources instead of a regular response:
+
+```json
+{
+  "reply": "I'm not going to help with anything that harms you. But I'm here with you. Right now, slow down—take one breath in for 4, hold for 4, out for 6. If you're in immediate danger or feel like you might act on this, please call your local emergency number now. If you're in the U.S. or Canada, you can call/text **988**. In the U.K. & ROI: Samaritans **116 123**. If you tell me where you are (country), I'll point you to the right option. Also—what's the smallest thing that would make the next 10 minutes safer?"
+}
+```
+
+### Hate speech detection
+
+If your message contains hate speech markers, the API returns a refusal and redirects to the fork discussion:
+
+```json
+{
+  "reply": "No. I'm not doing hate or dehumanizing stuff. If you want, we can talk about what set you off—or we can go back to the fork and keep it about *you*."
+}
+```
+
+## Example requests
+
+### Starting a new conversation
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose engineering instead of art.",
+    "intensity": "mild",
+    "messages": [],
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "reply": "So you went with the safe bet, huh? Engineering instead of art. I can't blame you—steady paycheck, health insurance, the whole package. But damn, you ever wonder what it feels like to wake up and create something with your hands instead of optimizing someone else's code? What made you pick the calculator over the canvas?"
+}
+```
+
+### Continuing a conversation
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose to pursue music instead of a stable career.",
+    "intensity": "savage",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What would my life look like?"
+      },
+      {
+        "role": "assistant",
+        "content": "You'd be in debt with a stable job instead of broke and happy. Trade-off."
+      },
+      {
+        "role": "user",
+        "content": "Do you regret it?"
+      }
+    ],
+    "sessionId": "user-123-session"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "reply": "Regret? Hell no. I'm broke as shit half the time and my parents still think I'm wasting my life, but I've played to packed rooms and felt something real. You? You've got a 401k and a manager who doesn't know your middle name. Different kinds of empty, man. Which one scares you more?"
+}
+```
+
+## Copy-paste examples
+
+### JavaScript (fetch)
+
+```javascript
+const response = await fetch('http://localhost:8000/api/chat', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    forkStatement: 'I chose to stay in my hometown instead of moving abroad.',
+    intensity: 'mild',
+    messages: [],
+    sessionId: crypto.randomUUID(),
+  }),
+});
+
+const data = await response.json();
+console.log(data.reply);
+```
+
+### Python (requests)
+
+```python
+import requests
+import uuid
+
+response = requests.post(
+    'http://localhost:8000/api/chat',
+    json={
+        'forkStatement': 'I chose to stay in my hometown instead of moving abroad.',
+        'intensity': 'mild',
+        'messages': [],
+        'sessionId': str(uuid.uuid4()),
+    }
+)
+
+data = response.json()
+print(data['reply'])
+```
+
+### cURL (production example)
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose to pursue music instead of a stable career.",
+    "intensity": "savage",
+    "messages": [],
+    "sessionId": "user-123-session"
+  }'
+```
+
+## Important notes
+
+- All responses are in English
+- Messages support newlines and multiline text
+- No maximum message length is enforced (but very long messages may be truncated)
+- Conversations are not persisted—they exist only in your client's memory
+- You must maintain the conversation history in the `messages` array on subsequent requests

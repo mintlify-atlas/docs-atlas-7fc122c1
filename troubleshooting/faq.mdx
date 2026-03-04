@@ -1,0 +1,526 @@
+---
+title: FAQ
+description: Frequently asked questions about The Fork
+---
+
+Answers to common questions about The Fork's design, features, and usage.
+
+## General questions
+
+<Accordion title="What is The Fork?">
+
+The Fork is a stateless, single-session chat application that lets you talk to "Other You" — an LLM persona that role-plays the life you didn't choose based on a defining decision (the "fork" in your life).
+
+**What it is:**
+- A conversational exploration of alternate life paths
+- A single-session, ephemeral chat (no data persistence)
+- A tool for reflection on major life decisions
+
+**What it isn't:**
+- Not therapy or professional mental health support
+- Not a confidant that stores your secrets
+- Not a soft or comfortable experience by default
+
+</Accordion>
+
+<Accordion title="How does The Fork work?">
+
+Here's the high-level flow:
+
+1. You provide a **fork statement** — a single defining decision and the path you didn't take
+2. You choose an **intensity level**: mild, savage, or brutal
+3. The frontend sends your session data (sessionId, messages, forkStatement, intensity) to the backend
+4. The backend builds a system prompt that creates the "Other You" persona with safety checks and style mirroring
+5. The backend calls the Emergent LLM and returns the reply
+6. Conversations are **ephemeral** — nothing is persisted for user experience
+
+<Note>
+MongoDB exists in the template but is optional and not used for core chat functionality.
+</Note>
+
+</Accordion>
+
+<Accordion title="Is my conversation data stored?">
+
+**No.** The Fork is intentionally stateless:
+
+- Conversations are **not** saved to a database
+- Messages exist only in your browser session and during API calls
+- When you close the browser or reset the session, everything is gone
+- The backend does not persist chat history
+
+From the README:
+
+> Conversations are ephemeral — nothing is persisted for user experience. (Mongo exists in the template but is optional.)
+
+The `sessionId` is used only for LLM session tracking, not for data storage.
+
+</Accordion>
+
+<Accordion title="Do I need MongoDB to run The Fork?">
+
+**No.** MongoDB is included in the docker-compose template but is **not required** for the core chat functionality.
+
+The Fork is stateless — it doesn't store conversations or user data. MongoDB is provided as a template for developers who want to extend the application with data persistence.
+
+You can safely ignore MongoDB connection errors if you're not using it for anything.
+
+</Accordion>
+
+## Intensity levels
+
+<Accordion title="What do the intensity levels mean?">
+
+Intensity controls how direct and provocative the "Other You" persona will be:
+
+### Mild
+
+**Tone:** Supportive, reflective, grounded — still honest but caring.
+
+**Language:** Light profanity allowed sparingly (e.g., "damn", "hell", "bullshit") if it fits naturally, but no cruelty.
+
+From `server.py:131-136`:
+
+```python
+if intensity == "mild":
+    return (
+        "MILD: supportive, reflective, grounded. Still honest. "
+        "Use light profanity sparingly if it fits (e.g., 'damn', 'hell', 'bullshit'), "
+        "but keep it caring. No cruelty."
+    )
+```
+
+### Savage
+
+**Tone:** Blunt, truth-forward, calls out avoidance and self-deception.
+
+**Language:** Profanity allowed and can be frequent ("bullshit", "what the hell", "shit", occasional "fuck"), but never abusive — no slurs, threats, or identity attacks.
+
+From `server.py:137-142`:
+
+```python
+if intensity == "savage":
+    return (
+        "SAVAGE: blunt, truth-forward, calls out avoidance and self-deception. "
+        "Profanity is allowed and can be frequent (e.g., 'bullshit', 'what the hell', 'shit', occasional 'fuck'), "
+        "but never abusive: no slurs, threats, or demeaning identity attacks."
+    )
+```
+
+### Brutal
+
+**Tone:** No comfort, no flinching — extremely direct.
+
+**Language:** Profanity allowed (sharp, candid — including "fuck" and "shit" when it fits), but never abusive — no slurs, threats, harassment, or identity attacks.
+
+From `server.py:143-147`:
+
+```python
+return (
+    "BRUTAL: no comfort, no flinching. Extremely direct. "
+    "Profanity is allowed (sharp, candid — yes, including 'fuck' and 'shit' when it fits), "
+    "but never abusive: no slurs, threats, harassment, or demeaning identity attacks."
+)
+```
+
+<Note>
+All intensity levels include safety guardrails. The persona will refuse to engage with self-harm content or hate speech regardless of intensity.
+</Note>
+
+</Accordion>
+
+<Accordion title="Can I change intensity during a conversation?">
+
+Yes, you can change the intensity level at any time during your session. The frontend allows you to switch between mild, savage, and brutal on the fly.
+
+When you change intensity:
+- The new intensity applies to all subsequent messages
+- Previous messages remain unchanged
+- The "Other You" persona adjusts its tone accordingly
+
+</Accordion>
+
+<Accordion title="Is profanity allowed in my messages?">
+
+Yes. You can use profanity in your messages without restriction (within the bounds of the safety checks).
+
+The persona will mirror your language style, including your use of profanity, and may match or slightly exceed it based on the intensity level.
+
+From `server.py:237-240`:
+
+```python
+# profanity mirroring note
+style_bits.append(
+    "Mirror the user's swearing level; in Savage/Brutal you can go one notch dirtier."
+)
+```
+
+</Accordion>
+
+## Safety features
+
+<Accordion title="What safety features are built in?">
+
+The Fork includes several safety mechanisms:
+
+### Self-harm detection
+
+Lightweight detection of self-harm cues ("kill myself", "suicide", "hurt myself", etc.) triggers an immediate crisis intervention response with resources:
+
+- U.S./Canada: **988** (call/text)
+- U.K. & ROI: Samaritans **116 123**
+
+From `server.py:154-173`.
+
+### Hate speech blocking
+
+Dehumanizing language and hate markers trigger a refusal response. The conversation is redirected back to the fork topic.
+
+From `server.py:176-187`.
+
+### Content policy in system prompt
+
+The "Other You" persona is explicitly forbidden from using slurs, threats, or identity attacks, regardless of intensity level.
+
+From `server.py:272`:
+
+```python
+- Still not abusive: no slurs, no threats, no demeaning identity attacks.
+```
+
+And from the tone rules (`server.py:284-285`):
+
+```python
+- {tone}
+- Profanity allowed (per intensity), but not abusive.
+```
+
+</Accordion>
+
+<Accordion title="What happens if I mention self-harm?">
+
+If your message contains self-harm markers, the backend intercepts it **before** it reaches the LLM and returns a crisis intervention response instead:
+
+> I'm not going to help with anything that harms you. But I'm here with you. Right now, slow down—take one breath in for 4, hold for 4, out for 6. If you're in immediate danger or feel like you might act on this, please call your local emergency number now. If you're in the U.S. or Canada, you can call/text **988**. In the U.K. & ROI: Samaritans **116 123**. If you tell me where you are (country), I'll point you to the right option. Also—what's the smallest thing that would make the next 10 minutes safer?
+
+From `server.py:166-173`.
+
+This is **not a bug** — it's an intentional safety feature.
+
+</Accordion>
+
+<Accordion title="Is The Fork appropriate for people in crisis?">
+
+**No.** The Fork includes this trigger warning prominently:
+
+> Trigger warning: conversations can surface uncomfortable material. If you're in crisis, stop now and seek help.
+
+From the README:
+
+> If you're in crisis, stop now and seek help.
+
+The Fork is designed for reflection on life decisions, not for mental health support during a crisis.
+
+**Crisis resources:**
+
+- U.S./Canada: **988** (call/text)
+- U.K. & ROI: Samaritans **116 123**
+- Elsewhere: Contact your local emergency services
+
+</Accordion>
+
+<Accordion title="Can I deploy The Fork publicly?">
+
+Technically yes, but with important considerations:
+
+From the README:
+
+> If you plan to use this beyond private experiments, get an ethics review, add moderation, and be explicit about limitations to users.
+
+And:
+
+> Add rate limiting, monitoring, and a thoughtful content moderation pipeline for public deployments
+
+**Production recommendations:**
+
+1. Restrict `CORS_ORIGINS` to your domain (not `*`)
+2. Use real secrets (Docker secrets or platform environment variables)
+3. Add TLS / reverse proxy (Nginx)
+4. Implement rate limiting
+5. Add monitoring and alerting
+6. Deploy a content moderation pipeline
+7. Get an ethics review
+8. Clearly communicate limitations to users
+
+</Accordion>
+
+## Technical questions
+
+<Accordion title="What LLM does The Fork use?">
+
+The Fork uses the **Emergent LLM** via the `emergentintegrations.llm.chat.LlmChat` client.
+
+From `server.py:354-357`:
+
+```python
+llm = (
+    LlmChat(api_key=api_key, session_id=req.sessionId, system_message=system_message)
+    .with_model("openai", "gpt-5.2")
+)
+```
+
+The model is configured to use `gpt-5.2` (adapt as needed for your environment).
+
+You must provide an `EMERGENT_LLM_KEY` in `backend/.env` for chat to work.
+
+</Accordion>
+
+<Accordion title="What is the sessionId used for?">
+
+The `sessionId` is a unique identifier (UUID) generated by the frontend for each session.
+
+**It's used for:**
+- Tracking the LLM conversation context within a single session
+- Logging and debugging
+
+**It's NOT used for:**
+- Storing conversations in a database
+- User authentication
+- Cross-session tracking
+
+The session is ephemeral — when you close the browser or reset, the `sessionId` is discarded.
+
+</Accordion>
+
+<Accordion title="How does style mirroring work?">
+
+The Fork includes a heuristic style profiler that analyzes how you write and instructs the LLM to mirror your mechanics.
+
+From `server.py:191-248`, the `_derive_style_directives` function analyzes:
+
+- Comma usage
+- Line breaks
+- Sentence length
+- Word count
+- Profanity level
+
+It then generates style directives like:
+
+- "Avoid commas unless absolutely necessary."
+- "Use line breaks. Keep it in short chunks."
+- "Write in short sentences. Minimal fluff."
+- "Mirror the user's swearing level; in Savage/Brutal you can go one notch dirtier."
+
+From the system prompt (`server.py:275-278`):
+
+```python
+- Pay close attention to HOW the user types: punctuation, sentence length, slang, formality, humor, swearing, and emotional temperature.
+- Mirror their voice AND mechanics: punctuation choices, line breaks, sentence length.
+- Keep the biker-smartass vibe as the base layer, but let the user's style steer the bike.
+- Do not announce that you are mirroring them.
+```
+
+</Accordion>
+
+<Accordion title="Can I run The Fork without Docker?">
+
+Yes. You can run both the backend and frontend locally without Docker.
+
+**Backend:**
+
+```bash
+cd backend
+cp .env.example .env
+# Edit .env with your settings
+pip install -r requirements.txt
+uvicorn server:app --reload
+```
+
+**Frontend:**
+
+```bash
+cd frontend
+cp .env.example .env
+# Edit .env to point to backend
+yarn install
+yarn start
+```
+
+See the [Quick Start guide](/quickstart) for detailed steps.
+
+</Accordion>
+
+<Accordion title="What ports does The Fork use?">
+
+**Default ports:**
+
+- **Frontend:** 3000
+- **Backend:** 8000  
+- **MongoDB:** 27017 (optional)
+
+You can change these:
+
+- Backend: Set `SERVER_PORT` in `backend/.env`
+- Frontend: Set `PORT` environment variable when starting (`PORT=3001 yarn start`)
+- MongoDB: Configure in `docker-compose.yml` or your local MongoDB setup
+
+</Accordion>
+
+<Accordion title="How do I run tests?">
+
+**Backend tests (pytest):**
+
+```bash
+cd backend
+pytest              # All tests
+pytest -v          # Verbose
+pytest --cov=server # With coverage
+pytest tests/unit/ # Unit tests only
+```
+
+**Frontend tests (Playwright E2E):**
+
+```bash
+cd frontend
+yarn test:e2e          # Run tests
+yarn test:e2e:ui       # Interactive UI
+yarn test:e2e:headed   # Visible browser
+```
+
+See the [Testing guide](/development/testing) for more details.
+
+</Accordion>
+
+## API questions
+
+<Accordion title="What does a chat request look like?">
+
+The `/api/chat` endpoint expects a POST request with this JSON structure:
+
+```json
+{
+  "forkStatement": "I chose engineering instead of art.",
+  "intensity": "savage",
+  "messages": [
+    {"role": "user", "content": "Do you regret it?"},
+    {"role": "assistant", "content": "Regret? Hell no..."}
+  ],
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Required fields:**
+- `forkStatement` (string): The defining decision and alternate path
+- `sessionId` (string): Unique session identifier (UUID format)
+
+**Optional fields:**
+- `intensity` (string): "mild", "savage", or "brutal" (default: "mild")
+- `messages` (array): Conversation history
+
+See the [Chat endpoint documentation](/api/chat) for full details.
+
+</Accordion>
+
+<Accordion title="What error codes does the API return?">
+
+**Common error responses:**
+
+### 400 Bad Request
+
+Missing or invalid `forkStatement`:
+
+```json
+{
+  "detail": "forkStatement is required"
+}
+```
+
+### 500 Internal Server Error
+
+Missing `EMERGENT_LLM_KEY`:
+
+```json
+{
+  "detail": "Missing EMERGENT_LLM_KEY in backend environment."
+}
+```
+
+LLM request failed:
+
+```json
+{
+  "detail": "LLM request failed: <error details>"
+}
+```
+
+Empty model response:
+
+```json
+{
+  "detail": "Empty response from model"
+}
+```
+
+From `server.py:168-169`, `330-333`, `362-363`, `366-367`.
+
+</Accordion>
+
+<Accordion title="How do I view API documentation?">
+
+When the backend is running, you can access interactive API documentation:
+
+**Swagger UI:**
+```
+http://localhost:8000/api/docs
+```
+
+**ReDoc:**
+```
+http://localhost:8000/api/redoc
+```
+
+**OpenAPI JSON:**
+```
+http://localhost:8000/api/openapi.json
+```
+
+You can also read the static [API reference documentation](/api/chat).
+
+</Accordion>
+
+## Contributing
+
+<Accordion title="Can I contribute to The Fork?">
+
+Yes! The Fork welcomes contributions, but with an important note from the README:
+
+> If you're about to change the voice, rewind and think twice. The persona is deliberate and documented in server.py. That said, we welcome improvements.
+
+**Contribution workflow:**
+
+1. Fork & clone the repository
+2. Create a branch: `git checkout -b feature/your-feature`
+3. Run tests (backend & frontend)
+4. Add tests for new behavior
+5. Keep changes scoped
+6. Document changes in `ENHANCEMENT_SUMMARY.md` or docs
+7. Open a PR with a clear description of intent and design/ethics impacts
+
+**Code style:**
+- Backend: FastAPI/Pydantic idioms; run black/isort/flake8
+- Frontend: Follow CRA + Tailwind conventions; run ESLint
+
+</Accordion>
+
+<Accordion title="Where is the persona logic defined?">
+
+The "Other You" persona logic is defined in `backend/server.py`:
+
+- **System message builder:** `_build_system_message()` (lines 251-298)
+- **Intensity style mapping:** `_intensity_style()` (lines 130-147)
+- **Style mirroring logic:** `_derive_style_directives()` (lines 191-248)
+- **Safety checks:** `_safety_quick_check()` (lines 150-188)
+
+The persona rules are documented inline in the system prompt. Review `server.py` before proposing changes to the persona behavior.
+
+</Accordion>

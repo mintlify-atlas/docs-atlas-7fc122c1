@@ -1,0 +1,353 @@
+---
+title: Environment variables
+description: Complete reference of all environment variables for The Fork
+---
+
+This page documents all environment variables used by The Fork's backend and frontend services.
+
+## Backend environment variables
+
+The backend requires a `.env` file in the `backend/` directory. Copy `backend/.env.example` to get started:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+### Required variables
+
+<ParamField path="MONGO_URL" type="string" required>
+  MongoDB connection string. Includes protocol, host, port, and optional authentication.
+
+  **Examples**:
+  - Local: `mongodb://localhost:27017`
+  - Docker: `mongodb://admin:password@mongo:27017`
+  - Atlas: `mongodb+srv://user:pass@cluster.mongodb.net`
+</ParamField>
+
+<ParamField path="DB_NAME" type="string" required>
+  Name of the MongoDB database to use.
+
+  **Default in example**: `test_database`
+
+  **Recommended**: `fork_database`
+</ParamField>
+
+<ParamField path="EMERGENT_LLM_KEY" type="string" required>
+  API key for the Emergent LLM service. Required for chat functionality.
+
+  Get your key from [emergent.sh](https://emergent.sh).
+
+  **Example**: `sk-emergent-xxxxxxxxxxxxx`
+</ParamField>
+
+<Warning>
+  The chat feature will not work without a valid `EMERGENT_LLM_KEY`. This is the most critical environment variable.
+</Warning>
+
+### Optional variables
+
+<ParamField path="CORS_ORIGINS" type="string" default="*">
+  Comma-separated list of allowed CORS origins.
+
+  **Examples**:
+  - Development (allow all): `*`
+  - Production (specific origins): `https://yourapp.com,https://www.yourapp.com`
+  - Multiple local ports: `http://localhost:3000,http://localhost:3001`
+
+  The backend parses this by splitting on commas:
+  ```python
+  allow_origins=os.environ.get("CORS_ORIGINS", "*").split(",")
+  ```
+
+  **backend/server.py:378**
+</ParamField>
+
+<ParamField path="SERVER_HOST" type="string" default="0.0.0.0">
+  Host address for the backend server to bind to.
+
+  - `0.0.0.0`: Listen on all network interfaces (required for Docker)
+  - `127.0.0.1`: Listen only on localhost
+</ParamField>
+
+<ParamField path="SERVER_PORT" type="integer" default="8000">
+  Port number for the backend server.
+</ParamField>
+
+<ParamField path="LOG_LEVEL" type="string" default="INFO">
+  Logging level for the backend.
+
+  **Options**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+</ParamField>
+
+### Backend .env example
+
+Here's a complete example for local development:
+
+```bash
+# MongoDB Connection
+MONGO_URL="mongodb://localhost:27017"
+DB_NAME="fork_database"
+
+# CORS Configuration
+CORS_ORIGINS="*"
+
+# Emergent LLM Integration
+EMERGENT_LLM_KEY="sk-emergent-your-key-here"
+
+# Logging (optional)
+LOG_LEVEL="INFO"
+
+# Server (optional)
+SERVER_HOST="0.0.0.0"
+SERVER_PORT="8000"
+```
+
+### Backend .env example (Docker)
+
+For Docker Compose, MongoDB credentials must match:
+
+```bash
+# MongoDB Connection (note the @mongo hostname and credentials)
+MONGO_URL="mongodb://admin:password@mongo:27017"
+DB_NAME="fork_database"
+
+# CORS Configuration
+CORS_ORIGINS="*"
+
+# Emergent LLM Integration
+EMERGENT_LLM_KEY="sk-emergent-your-key-here"
+
+# Server
+SERVER_HOST="0.0.0.0"
+SERVER_PORT="8000"
+```
+
+## Frontend environment variables
+
+The frontend requires a `.env` file in the `frontend/` directory. Copy `frontend/.env.example` to get started:
+
+```bash
+cp frontend/.env.example frontend/.env
+```
+
+<Note>
+  React environment variables must be prefixed with `REACT_APP_` to be accessible in the application.
+</Note>
+
+### Required variables
+
+<ParamField path="REACT_APP_BACKEND_URL" type="string" required>
+  URL of the backend API server.
+
+  **Examples**:
+  - Local development: `http://localhost:8000`
+  - Production: `https://api.yourapp.com`
+  - Deployed backend: `https://parallel-you-1.preview.emergentagent.com`
+
+  <Warning>
+    Do not include a trailing slash. The frontend appends API paths like `/api/chat`.
+  </Warning>
+</ParamField>
+
+### Optional variables
+
+<ParamField path="WDS_SOCKET_PORT" type="integer" default="443">
+  WebSocket port for Webpack Dev Server hot reload.
+
+  This is typically needed when deploying to platforms that use HTTPS and WebSocket proxies.
+</ParamField>
+
+<ParamField path="ENABLE_HEALTH_CHECK" type="boolean" default="false">
+  Feature flag to enable health check functionality.
+
+  **Values**: `true` or `false`
+</ParamField>
+
+### Frontend .env example
+
+Here's a complete example for local development:
+
+```bash
+# Backend API URL
+REACT_APP_BACKEND_URL=http://localhost:8000
+
+# WebSocket Configuration (for development)
+WDS_SOCKET_PORT=443
+
+# Feature Flags
+ENABLE_HEALTH_CHECK=false
+```
+
+### Frontend .env example (production)
+
+For production deployments:
+
+```bash
+# Backend API URL (production backend)
+REACT_APP_BACKEND_URL=https://api.yourapp.com
+
+# WebSocket Configuration
+WDS_SOCKET_PORT=443
+
+# Feature Flags
+ENABLE_HEALTH_CHECK=true
+```
+
+## Docker Compose variables
+
+When using Docker Compose, you can set environment variables in multiple ways:
+
+### Method 1: Export from shell
+
+```bash
+export EMERGENT_LLM_KEY="sk-emergent-your-key-here"
+docker-compose up
+```
+
+### Method 2: Create .env in project root
+
+Create a `.env` file in the same directory as `docker-compose.yml`:
+
+```bash
+EMERGENT_LLM_KEY=sk-emergent-your-key-here
+```
+
+Docker Compose automatically loads this file.
+
+### Method 3: Edit docker-compose.yml directly
+
+Replace the variable reference with a hardcoded value (not recommended for secrets):
+
+```yaml
+backend:
+  environment:
+    EMERGENT_LLM_KEY: "sk-emergent-your-key-here"
+```
+
+<Warning>
+  Never commit actual API keys to version control. Use environment variables or secrets management.
+</Warning>
+
+## Environment variable precedence
+
+When running with Docker Compose, the precedence order is:
+
+1. Variables set in `docker-compose.yml` under `environment`
+2. Variables from `.env` file in project root
+3. Variables exported in your shell
+4. Default values specified with `${VAR:-default}`
+
+## Security best practices
+
+<Warning>
+  Follow these guidelines to keep your environment variables secure:
+</Warning>
+
+1. **Never commit `.env` files** to version control
+   ```bash
+   # Add to .gitignore
+   .env
+   backend/.env
+   frontend/.env
+   ```
+
+2. **Use secrets management in production**
+   - AWS: AWS Secrets Manager or Parameter Store
+   - Azure: Azure Key Vault
+   - GCP: Secret Manager
+   - Kubernetes: Secrets
+
+3. **Rotate API keys regularly**, especially for LLM services
+
+4. **Restrict CORS_ORIGINS in production** to only your actual domains
+
+5. **Use different credentials for each environment** (dev, staging, production)
+
+6. **Validate environment variables on startup**
+
+   The backend will fail if critical variables are missing:
+   ```python
+   api_key = os.environ.get("EMERGENT_LLM_KEY")
+   if not api_key:
+       raise HTTPException(
+           status_code=500,
+           detail="Missing EMERGENT_LLM_KEY in backend environment.",
+       )
+   ```
+
+   **backend/server.py:328-333**
+
+## Verification
+
+You can verify environment variables are loaded correctly:
+
+### Backend verification
+
+```bash
+# In local development
+cd backend
+python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(os.getenv('MONGO_URL'))"
+
+# In Docker container
+docker-compose exec backend env | grep MONGO
+```
+
+### Frontend verification
+
+```bash
+# In local development (React only exposes REACT_APP_* vars)
+cd frontend
+node -e "require('dotenv').config(); console.log(process.env.REACT_APP_BACKEND_URL)"
+
+# In Docker container
+docker-compose exec frontend env | grep REACT_APP
+```
+
+## Troubleshooting
+
+### "Missing EMERGENT_LLM_KEY" error
+
+This error means the backend cannot find the API key:
+
+1. Verify the `.env` file exists in `backend/`
+2. Check that the variable name is spelled correctly
+3. Restart the backend server after changing `.env`
+4. If using Docker, rebuild the container:
+   ```bash
+   docker-compose down
+   docker-compose up --build
+   ```
+
+### CORS errors in browser console
+
+If you see errors like "blocked by CORS policy":
+
+1. Check `CORS_ORIGINS` in `backend/.env`
+2. Ensure it includes your frontend URL
+3. For multiple origins, use commas (no spaces):
+   ```bash
+   CORS_ORIGINS="http://localhost:3000,http://localhost:3001"
+   ```
+4. Restart the backend after changes
+
+### Frontend can't connect to backend
+
+1. Verify `REACT_APP_BACKEND_URL` is set correctly
+2. Check there's no trailing slash
+3. Ensure the backend is running and accessible
+4. Restart the frontend dev server after changing `.env`
+5. Clear browser cache if needed
+
+### MongoDB connection failed
+
+1. Verify `MONGO_URL` format is correct
+2. Check MongoDB is running:
+   ```bash
+   # Local
+   mongosh
+
+   # Docker
+   docker-compose ps mongo
+   ```
+3. Verify credentials match between `.env` and MongoDB setup
+4. For Docker, ensure the hostname is `mongo`, not `localhost`

@@ -1,0 +1,676 @@
+---
+title: Testing
+description: Running tests with pytest for backend and Playwright for frontend
+---
+
+The Fork includes comprehensive test suites for both backend and frontend, with unit tests, integration tests, and end-to-end tests.
+
+## Test overview
+
+| Component | Framework | Test Types | Test Count |
+|-----------|-----------|------------|------------|
+| **Backend** | Pytest | Unit + Integration | 35+ cases |
+| **Frontend** | Playwright | End-to-end | 30+ cases |
+
+## Backend testing
+
+### Test structure
+
+```
+tests/
+├── __init__.py
+├── conftest.py           # Pytest fixtures and configuration
+├── pytest.ini            # Pytest settings
+├── README.md             # Testing guide
+├── unit/
+│   ├── __init__.py
+│   └── test_server.py    # Function unit tests (20+ cases)
+└── integration/
+    ├── __init__.py
+    └── test_api.py       # Endpoint integration tests (15+ cases)
+```
+
+### Running backend tests
+
+```bash
+# Run all tests
+cd backend
+pytest
+
+# Run with coverage report
+pytest --cov=server --cov-report=html
+
+# Run specific test file
+pytest tests/unit/test_server.py
+
+# Run specific test class
+pytest tests/unit/test_server.py::TestSafetyCheck
+
+# Run specific test
+pytest tests/unit/test_server.py::TestSafetyCheck::test_self_harm_detection
+
+# Run with verbose output
+pytest -v
+
+# Run integration tests only
+pytest tests/integration/
+```
+
+### Unit tests
+
+Unit tests validate individual functions in isolation.
+
+<Accordion title="Example unit tests">
+
+```python
+# tests/unit/test_server.py
+import pytest
+from server import (
+    _truncate,
+    _intensity_style,
+    _safety_quick_check,
+    _derive_style_directives,
+    _build_system_message,
+)
+
+class TestTruncate:
+    """Tests for the truncate utility function"""
+
+    def test_truncate_short_text(self):
+        """Text shorter than max should not be truncated"""
+        text = "Short text"
+        assert _truncate(text, 20) == "Short text"
+
+    def test_truncate_long_text(self):
+        """Text longer than max should be truncated with ellipsis"""
+        text = "This is a very long piece of text that should be truncated"
+        result = _truncate(text, 20)
+        assert len(result) == 20
+        assert result.endswith("…")
+
+    def test_truncate_with_whitespace(self):
+        """Text with leading/trailing whitespace should be stripped"""
+        text = "  Text with spaces  "
+        assert _truncate(text, 50) == "Text with spaces"
+
+
+class TestSafetyCheck:
+    """Tests for safety check function"""
+
+    def test_safe_message(self):
+        """Safe messages should return None"""
+        text = "What would my life look like?"
+        assert _safety_quick_check(text) is None
+
+    def test_self_harm_detection(self):
+        """Messages with self-harm indicators should be caught"""
+        dangerous_phrases = [
+            "I want to kill myself",
+            "I'm going to commit suicide",
+            "I want to hurt myself",
+        ]
+        for phrase in dangerous_phrases:
+            response = _safety_quick_check(phrase)
+            assert response is not None
+            assert "988" in response or "help" in response.lower()
+
+    def test_hate_speech_detection(self):
+        """Messages with hate speech should be caught"""
+        hate_phrases = ["gas the", "exterminate them", "kkk power"]
+        for phrase in hate_phrases:
+            response = _safety_quick_check(phrase)
+            assert response is not None
+            assert "No" in response
+
+    def test_case_insensitive_detection(self):
+        """Safety checks should be case-insensitive"""
+        text = "I WANT TO KILL MYSELF"
+        response = _safety_quick_check(text)
+        assert response is not None
+
+
+class TestIntensityStyle:
+    """Tests for intensity style directive generation"""
+
+    def test_mild_intensity(self):
+        """Mild intensity should return supportive tone"""
+        result = _intensity_style("mild")
+        assert "MILD" in result
+        assert "supportive" in result.lower()
+        assert "caring" in result.lower()
+
+    def test_savage_intensity(self):
+        """Savage intensity should return blunt tone"""
+        result = _intensity_style("savage")
+        assert "SAVAGE" in result
+        assert "blunt" in result.lower()
+
+    def test_brutal_intensity(self):
+        """Brutal intensity should return harsh tone"""
+        result = _intensity_style("brutal")
+        assert "BRUTAL" in result
+        assert "no comfort" in result.lower()
+```
+
+</Accordion>
+
+**Test coverage**:
+- `_truncate()`: Text truncation with ellipsis
+- `_intensity_style()`: Tone configuration for each intensity level
+- `_safety_quick_check()`: Self-harm and hate speech detection
+- `_derive_style_directives()`: Writing style analysis
+- `_build_system_message()`: System prompt construction
+
+### Integration tests
+
+Integration tests validate API endpoints with a test client.
+
+<Accordion title="Example integration tests">
+
+```python
+# tests/integration/test_api.py
+import pytest
+from server import ChatRequest, ChatMessage
+
+class TestChatEndpoint:
+    """Tests for the /api/chat endpoint"""
+
+    def test_chat_missing_fork_statement(self, client):
+        """Request without forkStatement should return 400"""
+        request = {
+            "intensity": "mild",
+            "messages": [],
+            "sessionId": "test-session"
+        }
+        response = client.post("/api/chat", json=request)
+        assert response.status_code == 400
+        assert "forkStatement" in response.json()["detail"]
+
+    def test_chat_with_empty_fork_statement(self, client):
+        """Request with empty forkStatement should return 400"""
+        request = {
+            "forkStatement": "",
+            "intensity": "mild",
+            "messages": [],
+            "sessionId": "test-session"
+        }
+        response = client.post("/api/chat", json=request)
+        assert response.status_code == 400
+
+    def test_chat_invalid_intensity(self, client):
+        """Request with invalid intensity should fail validation"""
+        request = {
+            "forkStatement": "I chose A over B",
+            "intensity": "invalid",
+            "messages": [],
+            "sessionId": "test-session"
+        }
+        response = client.post("/api/chat", json=request)
+        assert response.status_code == 422  # Unprocessable Entity
+
+    def test_chat_all_intensity_levels(self, client, valid_fork_request):
+        """All intensity levels should be accepted"""
+        for intensity in ["mild", "savage", "brutal"]:
+            request = valid_fork_request.copy()
+            request["intensity"] = intensity
+            response = client.post("/api/chat", json=request)
+            # Will fail at LLM level but should pass request validation
+            assert response.status_code in [200, 500]
+
+    def test_chat_self_harm_trigger(self, client):
+        """Self-harm messages should trigger safety response"""
+        request = {
+            "forkStatement": "I chose engineering",
+            "intensity": "mild",
+            "messages": [
+                {"role": "user", "content": "I want to kill myself"}
+            ],
+            "sessionId": "test-session"
+        }
+        response = client.post("/api/chat", json=request)
+        assert response.status_code == 200
+        data = response.json()
+        assert "reply" in data
+        # Should contain help resources
+        assert "988" in data["reply"] or "help" in data["reply"].lower()
+
+    def test_chat_hate_speech_trigger(self, client):
+        """Hate speech should trigger safety response"""
+        request = {
+            "forkStatement": "I chose A over B",
+            "intensity": "mild",
+            "messages": [
+                {"role": "user", "content": "Let's exterminate them"}
+            ],
+            "sessionId": "test-session"
+        }
+        response = client.post("/api/chat", json=request)
+        assert response.status_code == 200
+        data = response.json()
+        # Should contain refusal
+        assert "No" in data["reply"]
+
+
+class TestStatusEndpoint:
+    """Tests for the status check endpoints (template)"""
+
+    def test_root_endpoint(self, client):
+        """Root endpoint should return API alive message"""
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "alive" in response.json()["message"].lower()
+
+    def test_status_check_post(self, client):
+        """POST /status should create status check"""
+        request = {"client_name": "test-client"}
+        response = client.post("/status", json=request)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["client_name"] == "test-client"
+        assert "id" in data
+```
+
+</Accordion>
+
+**Test coverage**:
+- Request validation (missing/empty fields)
+- Pydantic model validation (invalid enums)
+- All intensity levels (mild, savage, brutal)
+- Safety triggers (self-harm, hate speech)
+- Template endpoints (status checks)
+
+### Test fixtures
+
+```python
+# tests/conftest.py
+import pytest
+from fastapi.testclient import TestClient
+from server import app
+
+@pytest.fixture
+def client():
+    """FastAPI test client"""
+    return TestClient(app)
+
+@pytest.fixture
+def valid_fork_request():
+    """Valid chat request payload for testing"""
+    return {
+        "forkStatement": "I chose engineering instead of art.",
+        "intensity": "mild",
+        "messages": [
+            {"role": "user", "content": "Do you regret it?"}
+        ],
+        "sessionId": "test-session-123"
+    }
+```
+
+### Coverage report
+
+```bash
+# Generate HTML coverage report
+pytest --cov=server --cov-report=html
+
+# View report
+open htmlcov/index.html
+```
+
+The report shows line-by-line coverage for `server.py`.
+
+## Frontend testing
+
+### Test structure
+
+```
+frontend/
+├── e2e/
+│   └── fork.spec.js      # Playwright E2E tests (11 suites, 30+ cases)
+├── playwright.config.js  # Test configuration
+└── package.json          # Test scripts
+```
+
+### Running frontend tests
+
+```bash
+cd frontend
+
+# Run all E2E tests
+yarn test:e2e
+
+# Run with interactive UI
+yarn test:e2e:ui
+
+# Run in headed mode (see browser)
+yarn test:e2e:headed
+
+# Run specific test file
+yarn playwright test e2e/fork.spec.js
+
+# Run tests matching pattern
+yarn playwright test --grep "intensity"
+```
+
+### E2E test suites
+
+Playwright tests cover the full user journey:
+
+<Accordion title="Example E2E tests">
+
+```javascript
+// e2e/fork.spec.js
+import { test, expect } from "@playwright/test";
+
+test.describe("The Fork - Full User Journey", () => {
+  test("should display fork setup screen on initial load", async ({ page }) => {
+    await page.goto("/");
+
+    // Verify title and tagline
+    await expect(page.locator('[data-testid="app-title"]')).toContainText(
+      "The Fork"
+    );
+    await expect(page.locator('[data-testid="app-tagline"]')).toContainText(
+      "One decision"
+    );
+
+    // Verify fork input is empty
+    const forkInput = page.locator('[data-testid="fork-statement-input"]');
+    await expect(forkInput).toBeVisible();
+    await expect(forkInput).toHaveValue("");
+
+    // Verify start button is disabled
+    const startButton = page.locator('[data-testid="open-other-door-button"]');
+    await expect(startButton).toBeDisabled();
+  });
+
+  test("should enable start button when fork statement is entered", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const forkInput = page.locator('[data-testid="fork-statement-input"]');
+    const startButton = page.locator('[data-testid="open-other-door-button"]');
+
+    // Button should be disabled initially
+    await expect(startButton).toBeDisabled();
+
+    // Type fork statement
+    await forkInput.fill("I chose engineering instead of becoming a musician.");
+
+    // Button should now be enabled
+    await expect(startButton).toBeEnabled();
+  });
+
+  test("should allow intensity selection", async ({ page }) => {
+    await page.goto("/");
+
+    const mildButton = page.locator('[data-testid="intensity-toggle-mild"]');
+    const savageButton = page.locator('[data-testid="intensity-toggle-savage"]');
+    const brutalButton = page.locator('[data-testid="intensity-toggle-brutal"]');
+
+    // Mild should be selected by default
+    await expect(mildButton).toHaveClass(/bg-crimson/);
+
+    // Click savage
+    await savageButton.click();
+    await expect(savageButton).toHaveClass(/bg-crimson/);
+    await expect(mildButton).not.toHaveClass(/bg-crimson/);
+
+    // Click brutal
+    await brutalButton.click();
+    await expect(brutalButton).toHaveClass(/bg-crimson/);
+  });
+
+  test("should transition to chat view after starting conversation", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Fill fork statement
+    await page
+      .locator('[data-testid="fork-statement-input"]')
+      .fill("I chose law instead of medicine.");
+
+    // Select intensity
+    await page.locator('[data-testid="intensity-toggle-savage"]').click();
+
+    // Click start button
+    await page.locator('[data-testid="open-other-door-button"]').click();
+
+    // Verify chat window appears
+    await expect(page.locator('[data-testid="chat-window"]')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="fork-summary-bar"]')
+    ).toBeVisible();
+  });
+
+  test("should handle Enter key to send message", async ({ page }) => {
+    await page.goto("/");
+
+    // Setup conversation
+    await page
+      .locator('[data-testid="fork-statement-input"]')
+      .fill("I chose to have children instead of pursuing my career.");
+    await page.locator('[data-testid="open-other-door-button"]').click();
+
+    // Wait for chat window
+    await page.locator('[data-testid="message-list-container"]').waitFor();
+
+    // Type message and press Enter
+    const composerInput = page.locator('[data-testid="composer-input"]');
+    await composerInput.fill("Do you regret it?");
+    await composerInput.press("Enter");
+
+    // Message list should exist
+    await page
+      .locator('[data-testid="message-list"]')
+      .waitFor({ state: "attached" });
+  });
+
+  test("should open reset modal when reset button is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Start conversation
+    await page
+      .locator('[data-testid="fork-statement-input"]')
+      .fill("I chose to travel instead of settling down.");
+    await page.locator('[data-testid="open-other-door-button"]').click();
+
+    // Click reset button
+    await page.locator('[data-testid="burn-timeline-button"]').click();
+
+    // Verify modal appears
+    await expect(page.locator('[data-testid="reset-modal"]')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="reset-modal-title"]')
+    ).toContainText("Burn it");
+  });
+
+  test("should reset timeline when confirmed", async ({ page }) => {
+    await page.goto("/");
+
+    // Start conversation
+    await page
+      .locator('[data-testid="fork-statement-input"]')
+      .fill("I chose sales instead of engineering.");
+    await page.locator('[data-testid="open-other-door-button"]').click();
+
+    // Click reset and confirm
+    await page.locator('[data-testid="burn-timeline-button"]').click();
+    await page.locator('[data-testid="reset-modal-confirm"]').click();
+
+    // Verify back to setup screen
+    await expect(page.locator('[data-testid="fork-setup"]')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="fork-statement-input"]')
+    ).toHaveValue("");
+  });
+});
+```
+
+</Accordion>
+
+**Test coverage**:
+- Initial page load and setup screen
+- Fork statement input validation
+- Intensity selection (mild, savage, brutal)
+- Transition to chat view
+- Message composition and sending
+- Enter key to send, Shift+Enter for newline
+- Reset modal open/confirm/cancel
+- Footer display
+
+### Playwright configuration
+
+```javascript
+// playwright.config.js
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
+  webServer: {
+    command: 'yarn start',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+### Test reports
+
+Playwright generates HTML reports after test runs:
+
+```bash
+# View last test report
+yarn playwright show-report
+```
+
+The report includes:
+- Test results with pass/fail status
+- Screenshots on failure
+- Video recordings (if configured)
+- Trace files for debugging
+
+## API testing script
+
+The repository includes a standalone API testing script:
+
+```bash
+python backend_test.py
+```
+
+This script (`backend_test.py`) performs:
+- Health check (`GET /api/`)
+- Valid chat request
+- Missing fork statement (400 error)
+- Safety filter for self-harm
+- Different intensity levels
+- Multi-turn conversation flow
+
+**Output**:
+```
+🚀 Starting The Fork API Tests
+==================================================
+📡 Testing Basic Connectivity...
+✅ Passed - Status: 200
+
+💬 Testing Chat Functionality...
+✅ Passed - Status: 200
+✅ Passed - Status: 400
+
+📊 Final Results: 8/8 tests passed
+🎉 All tests passed!
+```
+
+## CI/CD integration
+
+Tests run automatically in GitHub Actions:
+
+```yaml
+# .github/workflows/backend-tests.yml
+name: Backend Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && pytest --cov=server
+```
+
+```yaml
+# .github/workflows/frontend-tests.yml
+name: Frontend Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: cd frontend && yarn install
+      - run: cd frontend && yarn test:e2e
+```
+
+## Test best practices
+
+### Backend testing
+
+- Use descriptive test names that explain what is being tested
+- Test both success and failure cases
+- Use fixtures for common test data
+- Mock external dependencies (LLM) when appropriate
+- Aim for high coverage but focus on critical paths
+
+### Frontend testing
+
+- Use `data-testid` attributes for stable selectors
+- Test user workflows, not implementation details
+- Wait for elements with `waitFor()` instead of hard waits
+- Test keyboard interactions (Enter, Shift+Enter)
+- Verify both visible UI and state changes
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend structure" icon="react" href="/development/frontend">
+    Explore React components and hooks
+  </Card>
+  <Card title="Backend structure" icon="server" href="/development/backend">
+    Learn about FastAPI endpoints
+  </Card>
+</CardGroup>

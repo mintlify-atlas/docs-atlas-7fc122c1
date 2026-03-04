@@ -1,0 +1,497 @@
+---
+title: Production deployment
+description: Security, performance, and reliability considerations for production deployments
+---
+
+This guide covers critical considerations for deploying The Fork to production environments. Follow these recommendations to ensure your deployment is secure, performant, and reliable.
+
+## Security
+
+### CORS configuration
+
+The default CORS configuration allows all origins (`*`), which is insecure for production.
+
+<Warning>
+  Never use `CORS_ORIGINS="*"` in production. This allows any website to call your API.
+</Warning>
+
+**Configure strict CORS origins** in `backend/.env`:
+
+```bash
+CORS_ORIGINS="https://yourapp.com,https://www.yourapp.com"
+```
+
+The backend implements CORS using FastAPI's `CORSMiddleware`:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+**backend/server.py:375-381**
+
+### Secrets management
+
+<Warning>
+  Never hardcode secrets in code or commit `.env` files to version control.
+</Warning>
+
+**Use secrets management services**:
+
+- **AWS**: AWS Secrets Manager or Systems Manager Parameter Store
+- **Azure**: Azure Key Vault
+- **GCP**: Secret Manager
+- **Kubernetes**: Kubernetes Secrets
+- **HashiCorp**: Vault
+
+**Example with AWS Secrets Manager**:
+
+```python
+import boto3
+import json
+
+def get_secret(secret_name):
+    client = boto3.client('secretsmanager', region_name='us-east-1')
+    response = client.get_secret_value(SecretId=secret_name)
+    return json.loads(response['SecretString'])
+
+secrets = get_secret('fork/production')
+EMERGENT_LLM_KEY = secrets['EMERGENT_LLM_KEY']
+```
+
+### MongoDB authentication
+
+The default Docker Compose configuration uses weak credentials:
+
+```yaml
+MONGO_INITDB_ROOT_USERNAME: admin
+MONGO_INITDB_ROOT_PASSWORD: password
+```
+
+**For production**:
+
+1. **Use strong passwords**: Generate with a password manager
+2. **Create application-specific users** with limited permissions
+3. **Enable authentication** in MongoDB configuration
+4. **Use TLS/SSL** for MongoDB connections
+5. **Restrict network access** with firewalls or security groups
+
+**Example production MongoDB URL**:
+
+```bash
+MONGO_URL="mongodb://app_user:strong_password@mongo.internal:27017/?authSource=admin&ssl=true"
+```
+
+### API keys
+
+The `EMERGENT_LLM_KEY` is critical for functionality:
+
+1. **Rotate keys regularly** (e.g., every 90 days)
+2. **Use separate keys per environment** (dev, staging, production)
+3. **Monitor usage** to detect unauthorized access
+4. **Set up alerts** for unusual patterns
+5. **Implement rate limiting** (see below)
+
+### HTTPS/TLS
+
+<Warning>
+  Always use HTTPS in production. Never expose the API over plain HTTP.
+</Warning>
+
+**Recommended setup**:
+
+1. **Use a reverse proxy** like Nginx or Traefik
+2. **Obtain SSL/TLS certificates** from Let's Encrypt (free) or a commercial CA
+3. **Enforce HTTPS redirects** for all traffic
+4. **Enable HTTP/2** for better performance
+
+**Example Nginx configuration**:
+
+```nginx
+server {
+    listen 80;
+    server_name api.yourapp.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.yourapp.com;
+
+    ssl_certificate /etc/letsencrypt/live/api.yourapp.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.yourapp.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+## Rate limiting
+
+The backend does not implement rate limiting by default. Add rate limiting to prevent abuse and control LLM API costs.
+
+### Application-level rate limiting
+
+Use FastAPI middleware like `slowapi`:
+
+```python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@api_router.post("/chat")
+@limiter.limit("10/minute")
+async def chat(req: ChatRequest, request: Request):
+    # ... existing chat logic
+```
+
+### Reverse proxy rate limiting
+
+**Nginx example**:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/m;
+
+location /api/chat {
+    limit_req zone=api burst=5 nodelay;
+    proxy_pass http://localhost:8000;
+}
+```
+
+### Cloud-based rate limiting
+
+- **AWS**: API Gateway with usage plans
+- **Cloudflare**: Rate limiting rules
+- **Azure**: API Management policies
+- **Kong**: Rate limiting plugin
+
+## Monitoring and logging
+
+### Logging
+
+The backend uses Python's built-in logging:
+
+```python
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+```
+
+**backend/server.py:383-387**
+
+**For production**, configure structured logging:
+
+```python
+import json
+import logging
+from datetime import datetime
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "module": record.module,
+        }
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_data)
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logger.addHandler(handler)
+```
+
+### Log aggregation
+
+Centralize logs for analysis:
+
+- **ELK Stack**: Elasticsearch, Logstash, Kibana
+- **AWS**: CloudWatch Logs
+- **GCP**: Cloud Logging
+- **Azure**: Application Insights
+- **Datadog**: Log management
+- **Splunk**: Enterprise logging
+
+**Docker Compose logging driver**:
+
+```yaml
+backend:
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+```
+
+### Application monitoring
+
+Monitor application health and performance:
+
+1. **Health checks**: The backend includes a health endpoint at `/api/`
+2. **Metrics collection**: Use Prometheus + Grafana
+3. **APM tools**: New Relic, Datadog, or Elastic APM
+4. **Uptime monitoring**: Pingdom, UptimeRobot, or StatusCake
+
+### Database monitoring
+
+Monitor MongoDB performance:
+
+1. **Enable MongoDB monitoring** in MongoDB Atlas or ops manager
+2. **Track key metrics**:
+   - Connection pool usage
+   - Query performance
+   - Disk usage
+   - Replication lag
+3. **Set up alerts** for abnormal behavior
+
+## Performance optimization
+
+### Backend optimization
+
+1. **Use connection pooling** for MongoDB (already configured in Motor)
+2. **Enable response compression** in FastAPI:
+   ```python
+   from fastapi.middleware.gzip import GZipMiddleware
+   app.add_middleware(GZipMiddleware, minimum_size=1000)
+   ```
+3. **Add response caching** for static endpoints
+4. **Optimize database queries** with proper indexes
+
+### Frontend optimization
+
+The production frontend build includes:
+
+1. **Code minification** via webpack
+2. **Tree shaking** to remove unused code
+3. **Asset optimization** (images, fonts)
+
+**Serve with a CDN**:
+
+```nginx
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+```
+
+### Docker optimization
+
+**Use multi-stage builds** (already implemented in frontend):
+
+```dockerfile
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g serve
+COPY --from=builder /app/build ./build
+CMD ["serve", "-s", "build", "-l", "3000"]
+```
+
+**Set resource limits** in docker-compose.yml:
+
+```yaml
+backend:
+  deploy:
+    resources:
+      limits:
+        cpus: '1.0'
+        memory: 1G
+      reservations:
+        cpus: '0.5'
+        memory: 512M
+```
+
+## Reliability
+
+### Health checks
+
+Both services include health checks in Docker Compose:
+
+**Backend health check**:
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 5s
+```
+
+**Frontend health check**:
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 5s
+```
+
+### Restart policies
+
+Configure automatic restarts in docker-compose.yml:
+
+```yaml
+backend:
+  restart: unless-stopped
+
+frontend:
+  restart: unless-stopped
+
+mongo:
+  restart: unless-stopped
+```
+
+### Database backups
+
+<Warning>
+  Always implement regular database backups before deploying to production.
+</Warning>
+
+**Automated backup script**:
+
+```bash
+#!/bin/bash
+BACKUP_DIR="/backups/mongodb"
+DATE=$(date +%Y%m%d_%H%M%S)
+FILENAME="fork_backup_${DATE}.gz"
+
+mongodump --uri="mongodb://admin:password@localhost:27017" \
+  --db=fork_database \
+  --gzip \
+  --archive="${BACKUP_DIR}/${FILENAME}"
+
+# Keep only last 7 days of backups
+find ${BACKUP_DIR} -name "fork_backup_*.gz" -mtime +7 -delete
+```
+
+**Schedule with cron**:
+
+```cron
+0 2 * * * /usr/local/bin/backup-mongodb.sh
+```
+
+### Graceful shutdown
+
+The backend implements graceful shutdown:
+
+```python
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
+```
+
+**backend/server.py:390-392**
+
+## Infrastructure recommendations
+
+### Containerized deployment
+
+For production container orchestration:
+
+- **Kubernetes**: For complex, multi-region deployments
+- **Amazon ECS/Fargate**: Managed containers on AWS
+- **Google Cloud Run**: Serverless containers on GCP
+- **Azure Container Instances**: Managed containers on Azure
+- **Docker Swarm**: Simpler alternative to Kubernetes
+
+### Managed services
+
+Consider using managed services to reduce operational overhead:
+
+- **Database**: MongoDB Atlas, AWS DocumentDB
+- **Frontend hosting**: Vercel, Netlify, AWS Amplify
+- **API hosting**: AWS Elastic Beanstalk, Google App Engine
+- **Load balancing**: AWS ALB, GCP Load Balancer
+
+### Scaling strategy
+
+1. **Horizontal scaling**: Run multiple backend instances behind a load balancer
+2. **Database scaling**: Use MongoDB replica sets for read scaling
+3. **Caching**: Add Redis for session and response caching
+4. **CDN**: Use CloudFront, Cloudflare, or Fastly for static assets
+
+## Deployment checklist
+
+Before deploying to production, verify:
+
+- [ ] CORS_ORIGINS is restricted to your domain(s)
+- [ ] All secrets are stored in a secrets manager
+- [ ] MongoDB has strong authentication credentials
+- [ ] HTTPS/TLS is configured and enforced
+- [ ] Rate limiting is implemented
+- [ ] Structured logging is configured
+- [ ] Log aggregation is set up
+- [ ] Application monitoring is active
+- [ ] Database monitoring is active
+- [ ] Health checks are configured
+- [ ] Automatic restarts are enabled
+- [ ] Database backups are scheduled
+- [ ] Resource limits are set
+- [ ] Environment variables are validated
+- [ ] All .env files are in .gitignore
+- [ ] Dependencies are pinned to specific versions
+- [ ] Security headers are configured (CSP, HSTS, etc.)
+
+## Example production architecture
+
+A typical production deployment:
+
+```
+┌─────────────────┐
+│   CloudFlare    │  ← CDN + DDoS protection
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Load Balancer  │  ← AWS ALB / GCP LB
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+┌───▼──┐  ┌──▼───┐
+│ API  │  │ API  │  ← Backend containers (auto-scaling)
+│ (1)  │  │ (2)  │
+└───┬──┘  └──┬───┘
+    │        │
+    └────┬───┘
+         │
+┌────────▼────────┐
+│  MongoDB Atlas  │  ← Managed database (replica set)
+└─────────────────┘
+
+┌─────────────────┐
+│   Frontend      │  ← Vercel / Netlify / S3+CloudFront
+│   (Static)      │
+└─────────────────┘
+```
+
+This architecture provides:
+- High availability via multiple backend instances
+- Automatic scaling based on load
+- Managed database with automatic backups
+- Global CDN for frontend assets
+- DDoS protection and WAF

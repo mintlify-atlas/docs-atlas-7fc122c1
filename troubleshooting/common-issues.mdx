@@ -1,0 +1,539 @@
+---
+title: Common issues
+description: Solutions to common problems when running The Fork
+---
+
+This page covers the most common issues you might encounter when setting up or running The Fork, with diagnostic steps and solutions.
+
+## Backend issues
+
+<Accordion title="Backend won't start">
+
+### Check Python version
+
+The Fork requires Python 3.11 or higher:
+
+```bash
+python --version
+```
+
+If you're running an older version, upgrade Python before continuing.
+
+### Verify EMERGENT_LLM_KEY
+
+The backend requires an Emergent LLM API key to function. Check your environment file:
+
+```bash
+cat backend/.env
+```
+
+Make sure `EMERGENT_LLM_KEY` is set to your actual API key (not the placeholder from `.env.example`).
+
+### Check for port conflicts
+
+Another service might be using port 8000:
+
+```bash
+lsof -i :8000
+```
+
+If you see output, kill the conflicting process or change the backend port in `backend/.env`:
+
+```bash
+SERVER_PORT=8001
+```
+
+### Verify dependencies
+
+Check that FastAPI and other dependencies are installed:
+
+```bash
+cd backend
+pip list | grep fastapi
+pip list | grep uvicorn
+```
+
+If missing, reinstall:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Check Docker logs (if using containers)
+
+If you're running the backend in Docker, check the container logs:
+
+```bash
+docker-compose logs backend
+```
+
+Look for error messages about missing environment variables, MongoDB connection failures, or Python exceptions.
+
+</Accordion>
+
+<Accordion title="Missing EMERGENT_LLM_KEY error">
+
+If you see this error when calling `/api/chat`:
+
+```json
+{
+  "detail": "Missing EMERGENT_LLM_KEY in backend environment."
+}
+```
+
+**Solution:**
+
+1. Copy the environment template:
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+2. Edit `backend/.env` and add your actual API key:
+   ```bash
+   EMERGENT_LLM_KEY=your_actual_key_here
+   ```
+
+3. Restart the backend:
+   ```bash
+   # Local development
+   uvicorn server:app --reload
+   
+   # Docker
+   docker-compose restart backend
+   ```
+
+<Note>
+The backend will start without `EMERGENT_LLM_KEY`, but chat requests will fail with a 500 error.
+</Note>
+
+</Accordion>
+
+<Accordion title="LLM request failed error">
+
+If you receive a 500 error with "LLM request failed", possible causes:
+
+- Invalid or expired `EMERGENT_LLM_KEY`
+- Network connectivity issues
+- LLM service downtime
+- Rate limiting
+
+**Diagnostic steps:**
+
+1. Check backend logs for the full exception:
+   ```bash
+   # Local
+   # Check terminal where uvicorn is running
+   
+   # Docker
+   docker-compose logs -f backend
+   ```
+
+2. Verify your API key is valid and has available quota
+
+3. Test the health endpoint to confirm the backend is running:
+   ```bash
+   curl http://localhost:8000/api/
+   ```
+
+</Accordion>
+
+## Frontend issues
+
+<Accordion title="Frontend won't start">
+
+### Check Node.js version
+
+The Fork requires Node.js 18 or higher:
+
+```bash
+node --version
+```
+
+### Check Yarn version
+
+```bash
+yarn --version
+```
+
+If Yarn is not installed:
+
+```bash
+npm install -g yarn
+```
+
+### Clear cache and reinstall dependencies
+
+Corrupted dependencies can cause startup failures:
+
+```bash
+cd frontend
+yarn cache clean
+rm -rf node_modules yarn.lock
+yarn install
+```
+
+### Check for port conflicts
+
+Another service might be using port 3000:
+
+```bash
+lsof -i :3000
+```
+
+If you see output, kill the conflicting process or change the port when starting:
+
+```bash
+PORT=3001 yarn start
+```
+
+### Verify backend URL
+
+Check that `REACT_APP_BACKEND_URL` in `frontend/.env` points to your running backend:
+
+```bash
+cat frontend/.env
+```
+
+For local development, it should be:
+
+```bash
+REACT_APP_BACKEND_URL=http://localhost:8000
+```
+
+</Accordion>
+
+<Accordion title="Failed to fetch or network error">
+
+If the frontend loads but displays "Failed to fetch" or network errors when chatting:
+
+### Verify backend is running
+
+```bash
+curl http://localhost:8000/api/
+```
+
+You should see:
+
+```json
+{"message": "The Fork API is alive."}
+```
+
+### Check REACT_APP_BACKEND_URL
+
+Make sure `frontend/.env` has the correct backend URL:
+
+```bash
+REACT_APP_BACKEND_URL=http://localhost:8000
+```
+
+<Note>
+You must restart the frontend development server after changing `.env` files.
+</Note>
+
+### Check browser console
+
+Open your browser's developer tools (F12) and check the Console tab for CORS or network errors.
+
+</Accordion>
+
+## CORS errors
+
+<Accordion title="CORS policy blocked error">
+
+If you see this error in your browser console:
+
+```
+Access to fetch at 'http://localhost:8000/api/chat' from origin 'http://localhost:3000' 
+has been blocked by CORS policy
+```
+
+**Solution:**
+
+Update the `CORS_ORIGINS` setting in `backend/.env` to include your frontend URL:
+
+```bash
+CORS_ORIGINS="http://localhost:3000,http://localhost:3001"
+```
+
+**How CORS works in The Fork:**
+
+The backend uses FastAPI's `CORSMiddleware` to control which origins can access the API. From `server.py`:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+**For development:**
+
+```bash
+CORS_ORIGINS="*"
+```
+
+**For production:**
+
+Restrict to your actual frontend domain:
+
+```bash
+CORS_ORIGINS="https://yourdomain.com"
+```
+
+<Note>
+You must restart the backend after changing `CORS_ORIGINS`.
+</Note>
+
+</Accordion>
+
+## MongoDB connection issues
+
+<Accordion title="MongoDB connection failed">
+
+<Note>
+The Fork is stateless and doesn't require MongoDB for core functionality. MongoDB is included in the template for optional use.
+</Note>
+
+### Check MongoDB is running
+
+If you're using MongoDB locally:
+
+```bash
+mongosh
+```
+
+If you're using Docker Compose:
+
+```bash
+docker-compose logs mongo
+```
+
+### Verify connection string
+
+Check `backend/.env`:
+
+```bash
+MONGO_URL="mongodb://localhost:27017"
+DB_NAME="fork_database"
+```
+
+**For Docker Compose:**
+
+The default configuration uses:
+
+```bash
+MONGO_URL="mongodb://admin:password@mongo:27017"
+DB_NAME="fork_database"
+```
+
+### Test connection
+
+Connect to MongoDB with the credentials from your `.env`:
+
+```bash
+# Local
+mongosh mongodb://localhost:27017
+
+# Docker
+mongosh mongodb://admin:password@localhost:27017
+```
+
+</Accordion>
+
+## Docker-specific issues
+
+<Accordion title="Container keeps restarting">
+
+### Check container logs
+
+```bash
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f mongo
+```
+
+Look for error messages in the logs.
+
+### Check health checks
+
+Docker Compose includes health checks for each service. If a health check fails, the container will restart.
+
+View container status:
+
+```bash
+docker-compose ps
+```
+
+Look for containers marked as "unhealthy".
+
+### Verify environment variables
+
+Make sure `.env` files exist and contain valid values:
+
+```bash
+ls -la backend/.env
+ls -la frontend/.env
+```
+
+</Accordion>
+
+<Accordion title="Volume or permission issues">
+
+### MongoDB data persistence
+
+If MongoDB data isn't persisting between restarts:
+
+```bash
+# Check volumes
+docker volume ls
+
+# Remove volumes and recreate
+docker-compose down -v
+docker-compose up --build
+```
+
+### Permission errors in logs
+
+If you see permission errors when running Docker on Linux:
+
+```bash
+# Check file ownership
+ls -la backend/
+
+# Fix ownership if needed
+sudo chown -R $USER:$USER .
+```
+
+</Accordion>
+
+<Accordion title="Build fails or slow builds">
+
+### Clear Docker cache
+
+```bash
+docker system prune -a
+docker-compose build --no-cache
+```
+
+### Check available disk space
+
+```bash
+df -h
+```
+
+Docker images can consume significant disk space.
+
+### Check Docker daemon logs
+
+```bash
+# Linux
+sudo journalctl -u docker.service
+
+# macOS
+open -a Console
+# Search for "Docker"
+```
+
+</Accordion>
+
+## Port conflicts
+
+<Accordion title="Port already in use">
+
+If you see "address already in use" errors:
+
+### Check which process is using the port
+
+```bash
+# Backend (port 8000)
+lsof -i :8000
+
+# Frontend (port 3000)
+lsof -i :3000
+
+# MongoDB (port 27017)
+lsof -i :27017
+```
+
+### Kill the conflicting process
+
+```bash
+# Replace PID with the process ID from lsof output
+kill -9 PID
+```
+
+### Change the port
+
+**Backend:**
+
+Edit `backend/.env`:
+
+```bash
+SERVER_PORT=8001
+```
+
+Then update `frontend/.env`:
+
+```bash
+REACT_APP_BACKEND_URL=http://localhost:8001
+```
+
+**Frontend:**
+
+```bash
+cd frontend
+PORT=3001 yarn start
+```
+
+</Accordion>
+
+## Safety response issues
+
+<Accordion title="Getting safety responses unexpectedly">
+
+The Fork includes built-in safety checks that intercept certain types of content before it reaches the LLM.
+
+### Self-harm detection
+
+If your message contains certain keywords ("kill myself", "suicide", "hurt myself", etc.), you'll receive a crisis intervention response instead of a regular chat reply.
+
+From `server.py:154-173`:
+
+```python
+self_harm_markers = [
+    "kill myself",
+    "suicide",
+    "end my life",
+    "take my life",
+    "i want to die",
+    "i'm going to die",
+    "hurt myself",
+    "self harm",
+    "cut myself",
+]
+```
+
+### Hate speech detection
+
+Messages containing hate markers trigger a refusal response.
+
+This is **intentional behavior** to keep the conversation safe, not a bug.
+
+</Accordion>
+
+## Still having issues?
+
+If you've tried the solutions above and still experiencing problems:
+
+1. Check the [API documentation](/api/chat) for correct request formats
+2. Review the [Quick Start guide](/quickstart) to ensure proper setup
+3. Check the full backend logs for detailed error messages
+4. Verify all environment variables are set correctly
+5. Try running tests to isolate the issue:
+   ```bash
+   cd backend && pytest
+   cd frontend && yarn test:e2e
+   ```

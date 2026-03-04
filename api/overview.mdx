@@ -1,0 +1,119 @@
+---
+title: API overview
+description: Learn how to interact with The Fork API to connect with your alternate self
+---
+
+## Introduction
+
+The Fork API is a FastAPI service that provides an interactive conversation interface with an AI-powered alternate self. You can explore "what if" scenarios based on life decisions you didn't make. All interactions are stateless, with no persistent storage.
+
+## Base URL
+
+All API endpoints are available under the `/api` prefix:
+
+```
+http://localhost:8000/api
+```
+
+For production deployments, replace `localhost:8000` with your deployed domain.
+
+## Authentication
+
+No authentication is required. All requests are stateless and open to anyone with access to the API endpoint.
+
+<Note>
+While no authentication is required, production deployments should implement rate limiting and access controls.
+</Note>
+
+## Content type
+
+All requests must include the `Content-Type: application/json` header. Responses are returned in JSON format.
+
+## Rate limiting
+
+Currently, no rate limiting is enforced. Production deployments should implement:
+
+- Per-IP rate limiting
+- Per-session request throttling
+- Daily message limits per session
+
+## CORS
+
+By default, CORS is enabled for all origins (`*`). You can configure this via the `CORS_ORIGINS` environment variable.
+
+## Interactive documentation
+
+The API provides interactive documentation through multiple interfaces:
+
+### Swagger UI
+
+Access interactive API documentation with "Try It Out" functionality:
+
+```
+GET /api/docs
+```
+
+### ReDoc
+
+Access an alternative, more readable API documentation interface:
+
+```
+GET /api/redoc
+```
+
+### OpenAPI schema
+
+Retrieve the raw OpenAPI 3.0 specification:
+
+```
+GET /api/openapi.json
+```
+
+## Session management
+
+- **sessionId**: A unique identifier (typically UUID) sent with each request
+- **Stateless design**: The server doesn't store conversation history. You maintain conversation state on the client side
+- **Reset**: To start a new conversation, generate a new sessionId
+- **Timeout**: Sessions exist only for the duration of your connection
+
+## Health check
+
+Verify that the API is running and responsive:
+
+```bash
+curl http://localhost:8000/api/
+```
+
+**Response:**
+
+```json
+{
+  "message": "The Fork API is alive."
+}
+```
+
+## Quick start
+
+Here's a simple example to get you started:
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose to pursue music instead of a stable career.",
+    "intensity": "mild",
+    "messages": [],
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Chat endpoint" icon="message" href="/api/chat">
+    Learn how to send messages and receive responses from your alternate self
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/api/errors">
+    Understand error responses and how to handle them
+  </Card>
+</CardGroup>

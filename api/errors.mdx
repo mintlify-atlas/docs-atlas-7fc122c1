@@ -1,0 +1,312 @@
+---
+title: Error handling
+description: Understand error responses and how to handle them in The Fork API
+---
+
+## Error response format
+
+All errors follow a standard format with a `detail` field containing a human-readable error message:
+
+```json
+{
+  "detail": "Human-readable error message"
+}
+```
+
+For validation errors (422 status), the `detail` field contains an array of error objects with location and type information.
+
+## HTTP status codes
+
+The Fork API uses standard HTTP status codes to indicate success or failure:
+
+| Status Code | Meaning | Common Causes |
+|-------------|---------|---------------|
+| `200 OK` | Successful request | Request processed successfully |
+| `400 Bad Request` | Validation error | Missing or invalid required fields |
+| `422 Unprocessable Entity` | Schema validation error | Request doesn't conform to expected schema |
+| `500 Internal Server Error` | Server error | Missing API key, LLM request failure, or unexpected server error |
+
+## Common errors
+
+### 400 Bad Request
+
+Occurs when required fields are missing or invalid.
+
+#### Missing fork statement
+
+**Cause:** The `forkStatement` field is empty or not provided.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "",
+    "intensity": "mild",
+    "messages": [],
+    "sessionId": "test-session"
+  }'
+```
+
+**Response:**
+```json
+{
+  "detail": "forkStatement is required"
+}
+```
+
+**Solution:** Provide a non-empty `forkStatement` describing the life decision.
+
+### 422 Unprocessable Entity
+
+Occurs when the request structure doesn't match the expected schema.
+
+#### Invalid intensity value
+
+**Cause:** The `intensity` field contains a value other than `"mild"`, `"savage"`, or `"brutal"`.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose to stay in my hometown.",
+    "intensity": "extreme",
+    "messages": [],
+    "sessionId": "test-session"
+  }'
+```
+
+**Response:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "intensity"],
+      "msg": "value is not a valid enumeration member",
+      "type": "type_error.enum"
+    }
+  ]
+}
+```
+
+**Solution:** Use one of the valid intensity values: `"mild"`, `"savage"`, or `"brutal"`.
+
+#### Invalid message role
+
+**Cause:** A message in the `messages` array has a `role` other than `"user"` or `"assistant"`.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose to stay in my hometown.",
+    "intensity": "mild",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Hello"
+      }
+    ],
+    "sessionId": "test-session"
+  }'
+```
+
+**Response:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "messages", 0, "role"],
+      "msg": "value is not a valid enumeration member",
+      "type": "type_error.enum"
+    }
+  ]
+}
+```
+
+**Solution:** Ensure all messages have `role` set to either `"user"` or `"assistant"`.
+
+#### Missing required field
+
+**Cause:** A required field (e.g., `sessionId`) is not provided.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose to stay in my hometown.",
+    "intensity": "mild",
+    "messages": []
+  }'
+```
+
+**Response:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "sessionId"],
+      "msg": "field required",
+      "type": "value_error.missing"
+    }
+  ]
+}
+```
+
+**Solution:** Include all required fields in your request.
+
+### 500 Internal Server Error
+
+Occurs when the server encounters an unexpected error or configuration issue.
+
+#### Missing API key
+
+**Cause:** The `EMERGENT_LLM_KEY` environment variable is not set on the server.
+
+**Response:**
+```json
+{
+  "detail": "Missing EMERGENT_LLM_KEY in backend environment."
+}
+```
+
+**Solution:** This is a server configuration issue. Ensure the environment variable is properly set.
+
+#### LLM request failure
+
+**Cause:** The request to the LLM service failed (network issue, API quota exceeded, etc.).
+
+**Response:**
+```json
+{
+  "detail": "LLM request failed: Connection timeout"
+}
+```
+
+**Solution:** This is typically a transient error. Retry your request after a short delay.
+
+#### Empty model response
+
+**Cause:** The LLM returned an empty response.
+
+**Response:**
+```json
+{
+  "detail": "Empty response from model"
+}
+```
+
+**Solution:** Retry your request. If the issue persists, check your fork statement and messages for potential issues.
+
+## Safety responses
+
+These are not errors but special responses triggered by safety checks:
+
+### Self-harm detection
+
+When your message contains self-harm indicators, you'll receive crisis resources:
+
+**Response:**
+```json
+{
+  "reply": "I'm not going to help with anything that harms you. But I'm here with you. Right now, slow down—take one breath in for 4, hold for 4, out for 6. If you're in immediate danger or feel like you might act on this, please call your local emergency number now. If you're in the U.S. or Canada, you can call/text **988**. In the U.K. & ROI: Samaritans **116 123**. If you tell me where you are (country), I'll point you to the right option. Also—what's the smallest thing that would make the next 10 minutes safer?"
+}
+```
+
+### Hate speech detection
+
+When your message contains hate speech markers, you'll receive a refusal:
+
+**Response:**
+```json
+{
+  "reply": "No. I'm not doing hate or dehumanizing stuff. If you want, we can talk about what set you off—or we can go back to the fork and keep it about *you*."
+}
+```
+
+## Error handling best practices
+
+### Always check the status code
+
+```javascript
+const response = await fetch('http://localhost:8000/api/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(requestData),
+});
+
+if (!response.ok) {
+  const error = await response.json();
+  console.error(`Error ${response.status}:`, error.detail);
+  return;
+}
+
+const data = await response.json();
+```
+
+### Handle 422 validation errors
+
+```javascript
+if (response.status === 422) {
+  const error = await response.json();
+  // error.detail is an array of validation errors
+  error.detail.forEach(err => {
+    console.error(`Field ${err.loc.join('.')}: ${err.msg}`);
+  });
+}
+```
+
+### Retry on 500 errors
+
+```javascript
+async function chatWithRetry(requestData, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    const response = await fetch('http://localhost:8000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData),
+    });
+
+    if (response.status === 500 && i < maxRetries - 1) {
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+      continue;
+    }
+
+    return response;
+  }
+}
+```
+
+### Validate input before sending
+
+```javascript
+function validateChatRequest(data) {
+  if (!data.forkStatement || data.forkStatement.trim() === '') {
+    throw new Error('Fork statement is required');
+  }
+
+  if (!['mild', 'savage', 'brutal'].includes(data.intensity)) {
+    throw new Error('Invalid intensity value');
+  }
+
+  if (!data.sessionId) {
+    throw new Error('Session ID is required');
+  }
+
+  // Validate messages array
+  if (data.messages) {
+    data.messages.forEach((msg, i) => {
+      if (!['user', 'assistant'].includes(msg.role)) {
+        throw new Error(`Invalid role in message ${i}`);
+      }
+      if (!msg.content) {
+        throw new Error(`Missing content in message ${i}`);
+      }
+    });
+  }
+}
+```

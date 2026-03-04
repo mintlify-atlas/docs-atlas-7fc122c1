@@ -1,0 +1,271 @@
+---
+title: Local setup
+description: Run The Fork backend and frontend locally without Docker
+---
+
+This guide covers running The Fork in your local development environment without Docker. This approach gives you direct control over each service and is ideal for active development.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** 18 or higher (with npm or Yarn)
+- **Python** 3.11 or higher
+- **MongoDB** 7.0 or higher (running locally or in Docker)
+
+## MongoDB setup
+
+You need a running MongoDB instance before starting the backend.
+
+### Option 1: Run MongoDB locally
+
+```bash
+mongod --dbpath ./data
+```
+
+### Option 2: Run MongoDB in Docker
+
+```bash
+docker run -d -p 27017:27017 --name fork-mongo mongo:7.0
+```
+
+You can verify MongoDB is running:
+
+```bash
+mongosh
+```
+
+## Backend setup
+
+<Steps>
+  <Step title="Navigate to the backend directory">
+    ```bash
+    cd backend
+    ```
+  </Step>
+
+  <Step title="Copy the environment template">
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Open `backend/.env` and update the following values:
+
+    ```bash
+    MONGO_URL="mongodb://localhost:27017"
+    DB_NAME="fork_database"
+    EMERGENT_LLM_KEY="your_emergent_llm_key_here"  # Required!
+    CORS_ORIGINS="*"
+    SERVER_HOST="0.0.0.0"
+    SERVER_PORT="8000"
+    ```
+
+    <Warning>
+      The `EMERGENT_LLM_KEY` is required for chat functionality to work. Get your API key from [emergent.sh](https://emergent.sh).
+    </Warning>
+  </Step>
+
+  <Step title="Install Python dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Step>
+
+  <Step title="Run tests (optional)">
+    ```bash
+    pytest
+    ```
+  </Step>
+
+  <Step title="Start the backend server">
+    ```bash
+    uvicorn server:app --reload
+    ```
+
+    The server will start at:
+    - API: `http://localhost:8000`
+    - API docs: `http://localhost:8000/api/docs`
+  </Step>
+</Steps>
+
+## Frontend setup
+
+<Steps>
+  <Step title="Navigate to the frontend directory">
+    Open a new terminal and run:
+
+    ```bash
+    cd frontend
+    ```
+  </Step>
+
+  <Step title="Copy the environment template">
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Open `frontend/.env` and update:
+
+    ```bash
+    REACT_APP_BACKEND_URL=http://localhost:8000
+    WDS_SOCKET_PORT=443
+    ENABLE_HEALTH_CHECK=false
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    yarn install
+    ```
+  </Step>
+
+  <Step title="Run tests (optional)">
+    ```bash
+    yarn test:e2e
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    yarn start
+    ```
+
+    The app will start at `http://localhost:3000`
+  </Step>
+</Steps>
+
+## Verify the setup
+
+Once all services are running, you can verify the setup:
+
+1. **Backend health check**:
+   ```bash
+   curl http://localhost:8000/api/
+   ```
+
+   You should see: `{"message": "The Fork API is alive."}`
+
+2. **Frontend**: Open `http://localhost:3000` in your browser
+
+3. **API documentation**: Visit `http://localhost:8000/api/docs`
+
+## Development workflow
+
+### Making changes
+
+**Backend**: Edit files in the `backend/` directory. The server reloads automatically when you use the `--reload` flag.
+
+**Frontend**: Edit files in `frontend/src/`. Hot reload is enabled by default in development mode.
+
+### Running tests
+
+```bash
+# Backend tests
+cd backend && pytest
+
+# Frontend E2E tests
+cd frontend && yarn test:e2e
+
+# Frontend E2E with UI
+cd frontend && yarn test:e2e:ui
+
+# Frontend E2E headed (visible browser)
+cd frontend && yarn test:e2e:headed
+```
+
+### Code quality checks
+
+```bash
+# Backend linting
+cd backend
+flake8 server.py
+black --check server.py
+
+# Frontend linting
+cd frontend
+npx eslint src
+```
+
+## Testing the API
+
+You can test the chat endpoint directly:
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose engineering instead of art.",
+    "intensity": "mild",
+    "messages": [],
+    "sessionId": "test-123"
+  }'
+```
+
+## Troubleshooting
+
+### Backend won't start
+
+**Check Python version**:
+```bash
+python --version  # Should be 3.11+
+```
+
+**Check dependencies**:
+```bash
+pip list | grep fastapi
+```
+
+**Check environment variables**:
+```bash
+cat backend/.env
+```
+
+**Check if port is in use**:
+```bash
+lsof -i :8000
+```
+
+### Frontend won't start
+
+**Check Node version**:
+```bash
+node --version  # Should be 18+
+```
+
+**Clear cache and reinstall**:
+```bash
+yarn cache clean
+rm -rf node_modules yarn.lock
+yarn install
+```
+
+**Check if port is in use**:
+```bash
+lsof -i :3000
+```
+
+### Database connection issues
+
+**Check MongoDB is running**:
+```bash
+mongosh
+```
+
+**View Docker logs (if using Docker for MongoDB)**:
+```bash
+docker logs fork-mongo
+```
+
+### CORS issues
+
+If you see CORS errors in the browser console, update `backend/.env`:
+
+```bash
+CORS_ORIGINS="http://localhost:3000,http://localhost:3001"
+```
+
+Restart the backend server after making changes.

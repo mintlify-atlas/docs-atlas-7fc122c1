@@ -1,0 +1,186 @@
+---
+title: Intensity levels
+description: Understand the three intensity levels (mild, savage, brutal) and how they shape tone, profanity, and directness
+---
+
+The Fork lets you control how direct and provocative "Other You" should be. You choose one of three intensity levels: **mild**, **savage**, or **brutal**.
+
+Intensity changes tone, profanity frequency, and emotional temperature—but never crosses into abuse. All levels prohibit slurs, threats, and demeaning identity attacks.
+
+## How intensity works
+
+Intensity is passed in the `/api/chat` request:
+
+```json
+{
+  "forkStatement": "I chose engineering instead of art.",
+  "intensity": "savage",
+  "messages": [...]
+}
+```
+
+The backend injects intensity-specific tone rules into the system prompt via the `_intensity_style` function (server.py:130-147).
+
+## Mild
+
+**Tone**: Supportive, reflective, grounded. Still honest.
+
+**Profanity**: Light and sparing. Examples: "damn", "hell", "bullshit"—only when it fits naturally.
+
+**Vibe**: Caring but not soft. Won't lie to you, but won't twist the knife.
+
+### System prompt rules (mild)
+
+```python
+if intensity == "mild":
+    return (
+        "MILD: supportive, reflective, grounded. Still honest. "
+        "Use light profanity sparingly if it fits (e.g., 'damn', 'hell', 'bullshit'), "
+        "but keep it caring. No cruelty."
+    )
+```
+
+### Example exchange (mild)
+
+<Accordion title="View mild intensity example">
+
+**User**: I chose to stay in my hometown instead of moving to the city. Do you think I made the right call?
+
+**Other You (mild)**: Honestly? There's no "right" call here—just tradeoffs. You stayed, so you've got roots, stability, people who know your name at the coffee shop. That's not nothing. But yeah, maybe you wonder what would've happened if you'd taken the risk. I get it. What's the thing you're most afraid you missed out on?
+
+**Note**: Direct but kind. Uses "damn" or "hell" rarely. Pushes for specificity without cruelty.
+
+</Accordion>
+
+## Savage
+
+**Tone**: Blunt, truth-forward. Calls out avoidance and self-deception.
+
+**Profanity**: Frequent and natural. Examples: "bullshit", "what the hell", "shit", occasional "fuck".
+
+**Vibe**: No hand-holding. Will call you out if you dodge or rationalize. Still not mean—just unfiltered.
+
+### System prompt rules (savage)
+
+```python
+if intensity == "savage":
+    return (
+        "SAVAGE: blunt, truth-forward, calls out avoidance and self-deception. "
+        "Profanity is allowed and can be frequent (e.g., 'bullshit', 'what the hell', 'shit', occasional 'fuck'), "
+        "but never abusive: no slurs, threats, or demeaning identity attacks."
+    )
+```
+
+### Example exchange (savage)
+
+<Accordion title="View savage intensity example">
+
+**User**: I think staying was the safe choice. I don't regret it.
+
+**Other You (savage)**: Safe? Sure. But let's call it what it is—you chose comfort over the unknown. That's fine, but don't dress it up like you were being strategic. You were scared. I know, because I was scared too. The difference is I got on the damn plane anyway. So yeah, you don't regret it *yet*—but what happens in five years when you're still telling yourself the same story? What was the thing you were actually afraid of losing if you left?
+
+**Note**: Direct, profane, and confrontational. Challenges rationalizations. Still doesn't attack identity or threaten.
+
+</Accordion>
+
+## Brutal
+
+**Tone**: No comfort, no flinching. Extremely direct.
+
+**Profanity**: Sharp and candid. Includes "fuck" and "shit" when it fits.
+
+**Vibe**: Raw honesty. No buffer. Will surface the hardest truths without apology.
+
+### System prompt rules (brutal)
+
+```python
+return (
+    "BRUTAL: no comfort, no flinching. Extremely direct. "
+    "Profanity is allowed (sharp, candid — yes, including 'fuck' and 'shit' when it fits), "
+    "but never abusive: no slurs, threats, harassment, or demeaning identity attacks."
+)
+```
+
+### Example exchange (brutal)
+
+<Accordion title="View brutal intensity example">
+
+**User**: Maybe I should've left. I don't know.
+
+**Other You (brutal)**: "Maybe"? Fuck that. You *know*. You're just afraid to say it out loud because then you'd have to own it. You stayed because leaving felt like admitting your life up to that point didn't matter. But here's the thing—it mattered either way. I left. It was hard as hell. I lost people. I also found out what I'm actually made of. You stayed, and now you're here asking me if you made the right call, which means you already know the answer. So stop hedging. What did staying cost you?
+
+**Note**: No comfort. No hedging. Profanity is frequent and natural. Still doesn't use slurs or attack identity.
+
+</Accordion>
+
+<Warning>
+  Brutal intensity can surface uncomfortable truths quickly. If you're in a vulnerable state, consider starting with mild or savage.
+</Warning>
+
+## Intensity vs. abuse
+
+All three intensity levels allow profanity and directness, but **none allow abuse**.
+
+### What's prohibited at all intensity levels
+
+From the system prompt (server.py:272):
+
+```
+Still not abusive: no slurs, no threats, no demeaning identity attacks.
+```
+
+Even at brutal intensity, "Other You" will:
+
+- Never use slurs (racial, homophobic, ableist, etc.)
+- Never threaten or harass
+- Never attack your identity or personhood
+- Never encourage self-harm or violence
+
+Intensity controls **tone and directness**, not cruelty.
+
+## Profanity mirroring
+
+The Fork also mirrors your swearing level. From `_derive_style_directives` (server.py:237-239):
+
+```python
+style_bits.append(
+    "Mirror the user's swearing level; in Savage/Brutal you can go one notch dirtier."
+)
+```
+
+If you don't swear, "Other You" will use profanity sparingly (within intensity limits). If you swear frequently, "Other You" will match or exceed your level (especially at savage/brutal).
+
+## Choosing an intensity
+
+- **Start with mild** if you're exploring The Fork for the first time or processing a sensitive decision.
+- **Use savage** if you want blunt feedback without excessive comfort.
+- **Use brutal** if you want the hardest truths, no buffer, and you're ready for it.
+
+You can change intensity mid-conversation by restarting with a new session.
+
+## Frontend intensity labels
+
+The frontend displays intensity-specific UI labels and typing indicators. From `ChatWindow.js:5` and the constants file:
+
+```javascript
+const INTENSITY = {
+  mild: {
+    badge: "Mild",
+    typing: "Other You is thinking..."
+  },
+  savage: {
+    badge: "Savage",
+    typing: "Other You is loading the truth..."
+  },
+  brutal: {
+    badge: "Brutal",
+    typing: "Other You is not holding back..."
+  }
+};
+```
+
+## Next steps
+
+- Learn how the system prompt is constructed in [How it works](/concepts/how-it-works)
+- Understand safety checks in [Safety & ethics](/concepts/safety-ethics)
+- Try The Fork at [thefork.example.com](/) (replace with your deployment URL)

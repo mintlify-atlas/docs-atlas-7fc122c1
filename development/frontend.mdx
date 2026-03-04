@@ -1,0 +1,602 @@
+---
+title: Frontend
+description: Frontend structure, React components, custom hooks, and Tailwind styling
+---
+
+The Fork's frontend is a React single-page application built with Create React App, Tailwind CSS, and modern React patterns.
+
+## Tech stack
+
+- **React 19**: UI framework with concurrent features
+- **React Router 7.5**: Client-side routing
+- **Tailwind CSS 3.4**: Utility-first CSS framework
+- **Axios**: Promise-based HTTP client
+- **Craco**: CRA configuration override
+- **Playwright**: End-to-end testing framework
+
+## Project structure
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── Pill.js              # Badge/label component
+│   │   ├── IntensityToggle.js   # Three-way intensity selector
+│   │   ├── ForkSetup.js         # Initial input screen
+│   │   ├── ForkSummaryBar.js    # Sticky conversation summary
+│   │   ├── ChatWindow.js        # Main chat interface
+│   │   ├── MessageBubble.js     # Individual message display
+│   │   └── ResetModal.js        # Confirmation dialog
+│   ├── hooks/
+│   │   └── useSessionId.js      # Session management hook
+│   ├── utils/
+│   │   └── constants.js         # Constants and utilities
+│   ├── pages/
+│   │   └── Home.js              # Main page component
+│   ├── App.js                   # Root component with router
+│   ├── index.js                 # Application entry point
+│   ├── App.css                  # Component-specific styles
+│   └── index.css                # Global styles and Tailwind directives
+│
+├── e2e/
+│   └── fork.spec.js             # Playwright test suite
+│
+├── public/
+│   └── index.html               # HTML template
+│
+├── package.json                 # Dependencies and scripts
+├── playwright.config.js         # Test configuration
+├── tailwind.config.js           # Tailwind customization
+├── postcss.config.js            # PostCSS configuration
+└── craco.config.js              # CRA override configuration
+```
+
+## Component architecture
+
+### Component hierarchy
+
+```
+App
+└── Home
+    ├── ForkSetup (conditional: !started)
+    │   ├── Pill × 2
+    │   └── IntensityToggle
+    ├── ForkSummaryBar (conditional: started)
+    │   └── Pill
+    ├── ChatWindow (conditional: started)
+    │   ├── Pill × 2
+    │   └── MessageBubble (mapped)
+    └── ResetModal (conditional: showReset)
+```
+
+## Core components
+
+### ForkSetup
+
+The initial screen where you enter your fork statement and select intensity.
+
+<Accordion title="ForkSetup component code">
+
+```jsx
+import React from "react";
+import { Pill } from "./Pill";
+import { IntensityToggle } from "./IntensityToggle";
+import { INTENSITY } from "../utils/constants";
+
+export const ForkSetup = ({
+  forkStatement,
+  setForkStatement,
+  intensity,
+  setIntensity,
+  onStart,
+  started,
+}) => {
+  const canStart = forkStatement.trim().length > 0;
+
+  return (
+    <section
+      data-testid="fork-setup"
+      className={`mx-auto w-full max-w-4xl px-6 pt-10 ${
+        started ? "pb-4" : "pb-10"
+      }`}
+    >
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-ink/70 p-6">
+        <div className="flex flex-col gap-3">
+          <h1 className="text-4xl font-semibold text-zinc-50">
+            The Fork
+          </h1>
+          <p className="text-base text-zinc-300">
+            One decision. One alternate you. No refunds. No bullshit.
+          </p>
+        </div>
+
+        {!started && (
+          <div className="mt-8 grid gap-6">
+            <div>
+              <label className="block text-sm font-medium text-zinc-200">
+                Tell me the decision that split your life in half
+              </label>
+              <textarea
+                data-testid="fork-statement-input"
+                value={forkStatement}
+                onChange={(e) => setForkStatement(e.target.value)}
+                rows={4}
+                className="mt-3 w-full rounded-2xl bg-black/40 px-4 py-3"
+              />
+            </div>
+
+            <IntensityToggle
+              value={intensity}
+              onChange={setIntensity}
+              disabled={false}
+            />
+
+            <button
+              data-testid="open-other-door-button"
+              disabled={!canStart}
+              onClick={onStart}
+              className="rounded-2xl bg-crimson px-5 py-3"
+            >
+              Open the Other Door →
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+```
+
+</Accordion>
+
+**Key features**:
+- Validates fork statement is non-empty before enabling start button
+- Collapses after conversation starts
+- Uses controlled components for all inputs
+- Responsive layout with Tailwind grid and flexbox
+
+### IntensityToggle
+
+Three-way toggle for selecting conversation intensity: mild, savage, or brutal.
+
+<Accordion title="IntensityToggle component code">
+
+```jsx
+import React from "react";
+import { INTENSITY } from "../utils/constants";
+
+export const IntensityToggle = ({ value, onChange, disabled }) => {
+  return (
+    <div
+      data-testid="intensity-toggle"
+      className="grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-black/30 p-2"
+    >
+      {Object.entries(INTENSITY).map(([key, meta]) => {
+        const active = value === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            disabled={disabled}
+            data-testid={`intensity-toggle-${key}`}
+            onClick={() => onChange(key)}
+            className={`rounded-xl px-3 py-2 ${
+              active
+                ? "bg-crimson/20 border border-crimson/30"
+                : "bg-white/5 hover:bg-white/10"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-zinc-100">{meta.label}</span>
+              {active ? (
+                <span className="h-2 w-2 rounded-full bg-crimson" />
+              ) : (
+                <span className="h-2 w-2 rounded-full bg-white/10" />
+              )}
+            </div>
+            <div className="mt-1 text-xs text-zinc-400">{meta.hint}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+```
+
+</Accordion>
+
+**Key features**:
+- Iterates over `INTENSITY` constant for DRY configuration
+- Visual indicator (colored dot) shows active selection
+- Hover states for better UX
+- Disabled state support
+
+### ChatWindow
+
+The main chat interface that handles message display and composition.
+
+<Accordion title="ChatWindow component code (excerpt)">
+
+```jsx
+import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import { MessageBubble } from "./MessageBubble";
+import { INTENSITY, uuidv4 } from "../utils/constants";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+export const ChatWindow = ({ forkStatement, intensity, sessionId }) => {
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const listRef = useRef(null);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || loading) return;
+
+    setError("");
+    const userMsg = {
+      id: uuidv4(),
+      role: "user",
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setDraft("");
+    setLoading(true);
+
+    try {
+      const res = await axios.post(`${API}/chat`, {
+        forkStatement,
+        intensity,
+        sessionId,
+        messages: [...serverMessages, { role: "user", content: text }],
+      });
+
+      const reply = res?.data?.reply;
+      if (!reply) throw new Error("Empty reply");
+
+      const alterMsg = {
+        id: uuidv4(),
+        role: "alter",
+        content: reply,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, alterMsg]);
+    } catch (e) {
+      setError("The other door jammed. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  };
+
+  return (
+    <section data-testid="chat-window">
+      {/* Message list */}
+      <div ref={listRef} className="h-[460px] overflow-y-auto">
+        {messages.map((m) => (
+          <MessageBubble
+            key={m.id}
+            side={m.role === "user" ? "right" : "left"}
+            label={m.role === "user" ? "You" : "Other You"}
+            content={m.content}
+          />
+        ))}
+      </div>
+
+      {/* Composer */}
+      <textarea
+        data-testid="composer-input"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={onKeyDown}
+        rows={3}
+      />
+      <button
+        data-testid="composer-send-button"
+        onClick={send}
+        disabled={loading || !draft.trim()}
+      >
+        Say It
+      </button>
+    </section>
+  );
+};
+```
+
+</Accordion>
+
+**Key features**:
+- Auto-scrolls to bottom when new messages arrive
+- Enter to send, Shift+Enter for newline
+- Loading state with typing indicator
+- Error handling with user-friendly messages
+- Optimistic UI updates (adds user message immediately)
+
+### MessageBubble
+
+Displays individual messages with alternating alignment.
+
+```jsx
+export const MessageBubble = ({ side, label, content }) => (
+  <div className={`flex ${side === "right" ? "justify-end" : "justify-start"}`}>
+    <div className={`max-w-[80%] rounded-2xl p-4 ${
+      side === "right" 
+        ? "bg-crimson/20 text-zinc-50" 
+        : "bg-white/10 text-zinc-100"
+    }`}>
+      <div className="text-xs font-semibold text-zinc-400">{label}</div>
+      <div className="mt-2 whitespace-pre-wrap">{content}</div>
+    </div>
+  </div>
+);
+```
+
+**Key features**:
+- Conditional styling based on message sender
+- Preserves newlines with `whitespace-pre-wrap`
+- Max width prevents overly wide messages
+- Clear visual distinction between user and AI
+
+### ResetModal
+
+Confirmation dialog for resetting the conversation.
+
+```jsx
+export const ResetModal = ({ show, onConfirm, onCancel }) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="max-w-md rounded-3xl bg-ink p-6">
+        <h2 className="text-2xl font-semibold text-zinc-50">Burn it</h2>
+        <p className="mt-3 text-zinc-300">
+          This will erase the conversation and reset everything. You can't undo this.
+        </p>
+        <div className="mt-6 flex gap-3">
+          <button onClick={onCancel}>Keep Timeline</button>
+          <button onClick={onConfirm} className="bg-crimson">
+            Burn & Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+## Custom hooks
+
+### useSessionId
+
+Manages session ID persistence in localStorage.
+
+<Accordion title="useSessionId hook code">
+
+```javascript
+import { useMemo } from "react";
+import { uuidv4 } from "../utils/constants";
+
+export const useSessionId = () => {
+  const sessionId = useMemo(() => {
+    const existing = window.localStorage.getItem("fork.sessionId");
+    if (existing) return existing;
+    const id = uuidv4();
+    window.localStorage.setItem("fork.sessionId", id);
+    return id;
+  }, []);
+
+  return sessionId;
+};
+
+export const useSessionIdReset = () => {
+  return () => {
+    const id = uuidv4();
+    window.localStorage.setItem("fork.sessionId", id);
+    return id;
+  };
+};
+```
+
+</Accordion>
+
+**Usage**:
+
+```jsx
+const sessionId = useSessionId();
+const resetSession = useSessionIdReset();
+
+const handleReset = () => {
+  const newSessionId = resetSession();
+  setMessages([]);
+  setStarted(false);
+};
+```
+
+## Styling with Tailwind
+
+### Custom theme configuration
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  content: ["./src/**/*.{js,jsx}"],
+  theme: {
+    extend: {
+      colors: {
+        crimson: "#DC143C",
+        ink: "#0A0A0A",
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+      },
+    },
+  },
+};
+```
+
+### Custom CSS utilities
+
+```css
+/* index.css */
+.noise {
+  background-image: url("data:image/svg+xml,...");
+  opacity: 0.05;
+}
+
+.fork-open {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.fork-collapsed {
+  animation: collapse 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+```
+
+### Common patterns
+
+**Card styling**:
+```jsx
+className="rounded-3xl border border-white/10 bg-ink/60 p-6 shadow-lg"
+```
+
+**Button styling**:
+```jsx
+className="rounded-2xl bg-crimson px-5 py-3 text-white hover:bg-crimson/90 disabled:opacity-50"
+```
+
+**Input styling**:
+```jsx
+className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-zinc-100 focus:ring-2 focus:ring-crimson/60"
+```
+
+## State management
+
+The Fork uses **local component state** with React hooks:
+
+```jsx
+function Home() {
+  const [forkStatement, setForkStatement] = useState("");
+  const [intensity, setIntensity] = useState("mild");
+  const [started, setStarted] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  
+  const sessionId = useSessionId();
+  
+  // Props drilling to child components
+  return (
+    <>
+      <ForkSetup
+        forkStatement={forkStatement}
+        setForkStatement={setForkStatement}
+        intensity={intensity}
+        setIntensity={setIntensity}
+        onStart={() => setStarted(true)}
+      />
+      {started && (
+        <ChatWindow
+          forkStatement={forkStatement}
+          intensity={intensity}
+          sessionId={sessionId}
+        />
+      )}
+    </>
+  );
+}
+```
+
+**Why no global state?**
+- Single page application with simple data flow
+- All state is ephemeral (no persistence beyond localStorage)
+- Component hierarchy is shallow
+- Props drilling is minimal and manageable
+
+## API integration
+
+### Environment configuration
+
+```bash
+# .env
+REACT_APP_BACKEND_URL=http://localhost:8000
+```
+
+### API client setup
+
+```javascript
+import axios from "axios";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+export const sendChatMessage = async (payload) => {
+  const response = await axios.post(`${API}/chat`, payload);
+  return response.data;
+};
+```
+
+### Request/response types
+
+```typescript
+// Request payload
+{
+  forkStatement: string,
+  intensity: "mild" | "savage" | "brutal",
+  messages: Array<{ role: "user" | "assistant", content: string }>,
+  sessionId: string
+}
+
+// Response payload
+{
+  reply: string
+}
+```
+
+## Development workflow
+
+### Running locally
+
+```bash
+cd frontend
+cp .env.example .env
+yarn install
+yarn start
+```
+
+App runs at `http://localhost:3000`
+
+### Available scripts
+
+| Command | Description |
+|---------|-------------|
+| `yarn start` | Start development server with hot reload |
+| `yarn build` | Create production build |
+| `yarn test` | Run Jest tests |
+| `yarn test:e2e` | Run Playwright E2E tests |
+| `yarn test:e2e:ui` | Run Playwright with interactive UI |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Backend structure" icon="server" href="/development/backend">
+    Learn about FastAPI endpoints and LLM integration
+  </Card>
+  <Card title="Testing" icon="vial" href="/development/testing">
+    Run tests with Playwright and pytest
+  </Card>
+</CardGroup>

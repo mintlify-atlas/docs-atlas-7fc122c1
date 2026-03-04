@@ -1,0 +1,332 @@
+---
+title: Architecture
+description: System architecture, tech stack, and component relationships for The Fork
+---
+
+The Fork is a full-stack web application that enables users to have conversations with an AI persona representing the alternate version of themselves who made a different life decision.
+
+## System overview
+
+The application follows a client-server architecture with three main components:
+
+- **Frontend**: React SPA that handles user input and displays conversations
+- **Backend**: FastAPI server that processes chat requests and integrates with the LLM
+- **Database**: Optional MongoDB for template endpoints (not used by core chat feature)
+
+```
+┌─────────────────┐
+│  React Frontend │
+│   (Port 3000)   │
+└────────┬────────┘
+         │ HTTP/HTTPS
+         │ /api/chat
+         ▼
+┌─────────────────┐
+│  FastAPI Server │
+│   (Port 8000)   │
+└────────┬────────┘
+         │ API Call
+         ▼
+┌─────────────────┐
+│  Emergent LLM   │
+│   (GPT-5.2)     │
+└─────────────────┘
+```
+
+## Tech stack
+
+### Frontend
+
+| Technology | Purpose |
+|------------|--------|
+| **React 19** | UI framework with modern hooks |
+| **Tailwind CSS 3.4** | Utility-first styling |
+| **Axios** | HTTP client for API requests |
+| **Craco** | Create React App configuration override |
+| **React Router 7.5** | Client-side routing |
+| **Playwright** | End-to-end testing |
+
+### Backend
+
+| Technology | Purpose |
+|------------|--------|
+| **FastAPI 0.110** | Modern Python web framework |
+| **Uvicorn 0.25** | ASGI server |
+| **Pydantic 2.6** | Data validation and serialization |
+| **Motor 3.3** | Async MongoDB driver (optional) |
+| **PyMongo 4.6** | MongoDB sync driver (optional) |
+| **Pytest 8.0** | Testing framework |
+
+### LLM integration
+
+| Component | Details |
+|-----------|--------|
+| **Provider** | Emergent LLM via `emergentintegrations.llm.chat` |
+| **Model** | OpenAI GPT-5.2 |
+| **Authentication** | `EMERGENT_LLM_KEY` environment variable |
+
+### Infrastructure
+
+- **Docker**: Containerization for all services
+- **Docker Compose**: Multi-container orchestration
+- **GitHub Actions**: CI/CD pipelines
+
+## Directory structure
+
+<Accordion title="Complete project structure">
+
+```
+the-fork/
+├── backend/
+│   ├── server.py              # FastAPI application (370 lines)
+│   ├── requirements.txt       # Python dependencies
+│   ├── Dockerfile            # Production image
+│   ├── .env.example          # Environment template
+│   └── API_DOCUMENTATION.md  # API reference
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/       # React components (8 files)
+│   │   │   ├── Pill.js
+│   │   │   ├── IntensityToggle.js
+│   │   │   ├── ForkSetup.js
+│   │   │   ├── ForkSummaryBar.js
+│   │   │   ├── ChatWindow.js
+│   │   │   ├── MessageBubble.js
+│   │   │   └── ResetModal.js
+│   │   ├── hooks/
+│   │   │   └── useSessionId.js
+│   │   ├── utils/
+│   │   │   └── constants.js
+│   │   ├── pages/
+│   │   │   └── Home.js
+│   │   ├── App.js
+│   │   └── index.js
+│   ├── e2e/
+│   │   └── fork.spec.js      # Playwright tests (30+ cases)
+│   ├── package.json
+│   ├── Dockerfile            # Production image
+│   ├── Dockerfile.dev        # Development image
+│   └── playwright.config.js
+│
+├── tests/
+│   ├── unit/
+│   │   └── test_server.py    # Function tests (20+ cases)
+│   └── integration/
+│       └── test_api.py       # Endpoint tests (15+ cases)
+│
+├── docker-compose.yml        # Multi-service orchestration
+└── .github/
+    └── workflows/            # CI/CD automation (5 workflows)
+```
+
+</Accordion>
+
+## Component relationships
+
+### Frontend component hierarchy
+
+```
+App.js
+└── Home.js (pages/)
+    ├── ForkSetup
+    │   ├── Pill
+    │   └── IntensityToggle
+    ├── ForkSummaryBar
+    │   └── Pill
+    ├── ChatWindow
+    │   ├── Pill
+    │   └── MessageBubble
+    └── ResetModal
+```
+
+### Data flow
+
+1. **User input**: You enter a fork statement and select intensity in `ForkSetup`
+2. **Session creation**: A UUID is generated and stored in localStorage via `useSessionId`
+3. **Chat initialization**: Clicking "Open the Other Door" transitions to `ChatWindow`
+4. **Message sending**: Your message is sent to `/api/chat` with fork statement, intensity, session ID, and conversation history
+5. **Backend processing**: Server validates input, checks for safety triggers, builds system prompt, and calls LLM
+6. **Response display**: LLM reply is rendered in `MessageBubble` with alternating left/right alignment
+
+## API architecture
+
+The backend exposes a RESTful API with the following endpoints:
+
+| Endpoint | Method | Purpose |
+|----------|--------|--------|
+| `/api/` | GET | Health check |
+| `/api/chat` | POST | Main chat endpoint |
+| `/api/status` | GET | Get status checks (template) |
+| `/api/status` | POST | Create status check (template) |
+| `/api/docs` | GET | Interactive API documentation |
+
+### Chat endpoint flow
+
+<Accordion title="Detailed chat request flow">
+
+```python
+# 1. Request validation (Pydantic)
+class ChatRequest(BaseModel):
+    forkStatement: str
+    intensity: Literal["mild", "savage", "brutal"]
+    messages: List[ChatMessage]
+    sessionId: str
+
+# 2. Safety checks
+safety_response = _safety_quick_check(last_user_message)
+if safety_response:
+    return ChatResponse(reply=safety_response)
+
+# 3. Style analysis
+style_directives = _derive_style_directives(messages, intensity)
+
+# 4. System prompt construction
+system_message = _build_system_message(
+    fork_statement, 
+    intensity, 
+    style_directives
+)
+
+# 5. LLM call
+llm = LlmChat(
+    api_key=EMERGENT_LLM_KEY,
+    session_id=session_id,
+    system_message=system_message
+).with_model("openai", "gpt-5.2")
+
+response = await llm.send_message(UserMessage(text=user_text))
+
+# 6. Response validation and return
+return ChatResponse(reply=response)
+```
+
+</Accordion>
+
+## Safety architecture
+
+The application implements multiple safety layers:
+
+### Frontend safety
+
+- Input validation and sanitization
+- Character limits on text inputs
+- Clear intensity level descriptions with warnings
+
+### Backend safety
+
+<Accordion title="Safety implementation details">
+
+The `_safety_quick_check()` function in `server.py:150-188` implements:
+
+**Self-harm detection**:
+```python
+self_harm_markers = [
+    "kill myself",
+    "suicide",
+    "end my life",
+    "take my life",
+    "i want to die",
+    "hurt myself",
+    "self harm",
+    "cut myself",
+]
+```
+
+If detected, returns crisis resources:
+- U.S./Canada: 988 (call/text)
+- U.K. & ROI: Samaritans 116 123
+- Breathing exercise and grounding prompt
+
+**Hate speech detection**:
+```python
+hate_markers = [
+    "gas the",
+    "exterminate",
+    "nazi",
+    "kkk",
+]
+```
+
+If detected, returns refusal message and conversation redirect.
+
+</Accordion>
+
+### LLM safety
+
+The system prompt includes explicit constraints:
+- Profanity allowed per intensity level, but no slurs
+- No threats, harassment, or identity attacks
+- Stay in character without breaking into AI assistant mode
+
+## Session management
+
+Sessions are **ephemeral and stateless**:
+
+- Each session has a UUID stored in browser localStorage
+- Session ID is sent with every request for LLM conversation continuity
+- No server-side persistence of conversations
+- Resetting creates a new session ID and clears local state
+
+## Environment configuration
+
+### Backend environment variables
+
+```bash
+MONGO_URL="mongodb://localhost:27017"  # Optional
+DB_NAME="test_database"                # Optional
+CORS_ORIGINS="*"                       # Comma-separated origins
+EMERGENT_LLM_KEY=your_key_here        # REQUIRED for chat
+SERVER_HOST="0.0.0.0"
+SERVER_PORT=8000
+```
+
+### Frontend environment variables
+
+```bash
+REACT_APP_BACKEND_URL=http://localhost:8000
+WDS_SOCKET_PORT=443                    # For WebSocket in production
+ENABLE_HEALTH_CHECK=false
+```
+
+## Deployment architecture
+
+### Docker Compose setup
+
+```yaml
+services:
+  mongo:      # Optional
+    ports: 27017
+    
+  backend:
+    depends_on: [mongo]
+    ports: 8000
+    environment:
+      - EMERGENT_LLM_KEY
+      
+  frontend:
+    depends_on: [backend]
+    ports: 3000
+    environment:
+      - REACT_APP_BACKEND_URL
+```
+
+### Production considerations
+
+- Restrict `CORS_ORIGINS` to your domain(s)
+- Use Docker secrets or platform environment variables for API keys
+- Add reverse proxy (Nginx) for TLS termination
+- Implement rate limiting on `/api/chat` endpoint
+- Add monitoring and alerting for LLM failures
+- Consider content moderation pipeline for public deployments
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend structure" icon="react" href="/development/frontend">
+    Explore React components, hooks, and styling
+  </Card>
+  <Card title="Backend structure" icon="server" href="/development/backend">
+    Learn about FastAPI endpoints and LLM integration
+  </Card>
+</CardGroup>

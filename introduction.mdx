@@ -1,0 +1,164 @@
+---
+title: The Fork
+description: Speak to the alternate version of yourself who chose a different path
+mode: custom
+---
+
+<div className="relative overflow-hidden bg-gradient-to-br from-[#dc2626] via-[#991b1b] to-black dark:from-[#dc2626] dark:via-[#7f1d1d] dark:to-[#0f1117] py-20">
+  <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20"></div>
+  
+  <div className="relative max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
+    <div className="text-center">
+      <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
+        The Fork
+      </h1>
+      <p className="text-lg sm:text-xl text-white/90 max-w-2xl mx-auto mb-10 leading-relaxed">
+        One decision split your life in half. This app lets you talk to the version of you who took the other path. No comfort. No storage. No going back.
+      </p>
+      
+      <div className="flex flex-wrap items-center justify-center gap-4">
+        <a 
+          href="/quickstart" 
+          className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-white text-[#dc2626] font-semibold text-base hover:bg-gray-100 transition-colors duration-200 no-underline"
+        >
+          Get Started
+        </a>
+        <a 
+          href="/api/overview" 
+          className="inline-flex items-center justify-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 text-white font-semibold text-base hover:bg-white/20 transition-colors duration-200 no-underline"
+        >
+          API Reference
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    What is The Fork?
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    The Fork is an experimental AI-powered conversation app that creates a stateless, single-session chat with "Other You" — an LLM persona that embodies the life you didn't choose. Choose an intensity level, share your fork statement, and engage with the alternate timeline version of yourself.
+  </p>
+
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#dc2626] dark:hover:border-[#dc2626] transition-colors duration-200">
+      <div className="text-3xl mb-4">⚡</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Single-session conversations
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Stateless by design. No conversation history is stored. Every session is ephemeral and exists only in memory.
+      </p>
+    </div>
+
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#dc2626] dark:hover:border-[#dc2626] transition-colors duration-200">
+      <div className="text-3xl mb-4">🎚️</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Three intensity levels
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Choose mild (supportive), savage (blunt), or brutal (no comfort). Each level shapes how directly Other You confronts your choices.
+      </p>
+    </div>
+
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#dc2626] dark:hover:border-[#dc2626] transition-colors duration-200">
+      <div className="text-3xl mb-4">🛡️</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Built-in safety checks
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Automatic detection of self-harm indicators and hate speech, with immediate crisis resource responses.
+      </p>
+    </div>
+  </div>
+
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Quick start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get The Fork running locally in minutes with Docker Compose or native setup.
+  </p>
+
+  <Steps>
+    <Step title="Clone the repository">
+      Clone the repository and navigate into the project directory.
+      
+      ```bash
+      git clone https://github.com/CassieMarie0728/the-fork.git
+      cd the-fork
+      ```
+    </Step>
+
+    <Step title="Configure environment variables">
+      Copy the environment templates and add your Emergent LLM API key.
+      
+      ```bash
+      cp backend/.env.example backend/.env
+      cp frontend/.env.example frontend/.env
+      # Edit backend/.env and set EMERGENT_LLM_KEY
+      ```
+
+      <Note>The `EMERGENT_LLM_KEY` is required for chat functionality. Without it, the chat endpoint will return a 500 error.</Note>
+    </Step>
+
+    <Step title="Start with Docker Compose">
+      Launch all services (MongoDB, backend, frontend) with a single command.
+      
+      ```bash
+      docker-compose up --build
+      ```
+
+      The app will be available at:
+      - Frontend: http://localhost:3000
+      - Backend API: http://localhost:8000
+      - API docs: http://localhost:8000/api/docs
+    </Step>
+
+    <Step title="Try your first conversation">
+      Open the app, enter a fork statement (e.g., "I chose engineering instead of art"), select an intensity level, and start the conversation with Other You.
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Explore the documentation
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Learn about the architecture, deployment options, and API endpoints.
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="How it works" icon="gears" href="/concepts/how-it-works">
+      Understand the system prompt, persona design, and style mirroring mechanics
+    </Card>
+    <Card title="Intensity levels" icon="slider" href="/concepts/intensity-levels">
+      Explore the three intensity modes and how they shape conversation tone
+    </Card>
+    <Card title="Deploy locally" icon="laptop-code" href="/deployment/local-setup">
+      Run the backend and frontend without Docker for active development
+    </Card>
+    <Card title="Chat API" icon="message" href="/api/chat">
+      Send fork statements and messages to the alternate-self chat endpoint
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl border border-[#dc2626]/30 dark:border-[#dc2626]/30 bg-gradient-to-br from-[#dc2626]/5 to-[#991b1b]/5 dark:from-[#dc2626]/10 dark:to-[#991b1b]/10 p-8 text-center">
+    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+      Ready to confront the path not taken?
+    </h2>
+    <p className="text-base text-gray-600 dark:text-gray-400 mb-6 max-w-2xl mx-auto">
+      Clone the repository, set your API key, and start a conversation with Other You.
+    </p>
+    <a 
+      href="/quickstart" 
+      className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-[#dc2626] text-white font-semibold text-base hover:bg-[#991b1b] transition-colors duration-200 no-underline"
+    >
+      Get started now
+    </a>
+  </div>
+</div>

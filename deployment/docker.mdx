@@ -1,0 +1,382 @@
+---
+title: Docker
+description: Run The Fork using Docker Compose with all services containerized
+---
+
+This guide covers running The Fork using Docker Compose, which orchestrates the backend, frontend, and MongoDB services in containers.
+
+## Prerequisites
+
+- **Docker** 20.10 or higher
+- **Docker Compose** 2.0 or higher
+
+## Quick start
+
+<Steps>
+  <Step title="Configure environment variables (optional)">
+    Set the `EMERGENT_LLM_KEY` environment variable:
+
+    ```bash
+    export EMERGENT_LLM_KEY="your_emergent_llm_key_here"
+    ```
+
+    Alternatively, you can edit `docker-compose.yml` directly to set the key.
+  </Step>
+
+  <Step title="Build and start all services">
+    From the project root:
+
+    ```bash
+    docker-compose up --build
+    ```
+
+    This command builds images and starts all services:
+    - MongoDB
+    - Backend API
+    - Frontend
+  </Step>
+
+  <Step title="Access the application">
+    Once all services are running, you can access:
+
+    - **Frontend**: `http://localhost:3000`
+    - **Backend API**: `http://localhost:8000`
+    - **API Docs**: `http://localhost:8000/api/docs`
+    - **MongoDB**: `localhost:27017`
+  </Step>
+</Steps>
+
+## Service configuration
+
+The `docker-compose.yml` file defines three services:
+
+### MongoDB service
+
+```yaml
+mongo:
+  image: mongo:7.0
+  container_name: fork-mongo
+  environment:
+    MONGO_INITDB_ROOT_USERNAME: admin
+    MONGO_INITDB_ROOT_PASSWORD: password
+    MONGO_INITDB_DATABASE: fork_database
+  ports:
+    - "27017:27017"
+  volumes:
+    - mongo_data:/data/db
+  healthcheck:
+    test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+```
+
+**Key details**:
+- Uses MongoDB 7.0 official image
+- Default credentials: `admin` / `password`
+- Persistent storage via `mongo_data` volume
+- Health check pings MongoDB every 10 seconds
+
+<Warning>
+  For production, change the default MongoDB credentials and use secrets management.
+</Warning>
+
+### Backend service
+
+```yaml
+backend:
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  container_name: fork-backend
+  environment:
+    MONGO_URL: "mongodb://admin:password@mongo:27017"
+    DB_NAME: "fork_database"
+    EMERGENT_LLM_KEY: ${EMERGENT_LLM_KEY:-sk-emergent-test}
+    CORS_ORIGINS: "*"
+    SERVER_HOST: "0.0.0.0"
+    SERVER_PORT: "8000"
+  ports:
+    - "8000:8000"
+  depends_on:
+    mongo:
+      condition: service_healthy
+  volumes:
+    - ./backend:/app
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 5s
+```
+
+**Key details**:
+- Builds from `backend/Dockerfile`
+- Waits for MongoDB to be healthy before starting
+- Mounts backend code for development
+- Health check via API endpoint
+
+### Frontend service
+
+```yaml
+frontend:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile.dev
+  container_name: fork-frontend
+  environment:
+    REACT_APP_BACKEND_URL: "http://localhost:8000"
+    WDS_SOCKET_PORT: 443
+    ENABLE_HEALTH_CHECK: "false"
+  ports:
+    - "3000:3000"
+  volumes:
+    - ./frontend/src:/app/src
+    - ./frontend/public:/app/public
+  depends_on:
+    - backend
+  healthcheck:
+    test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 5s
+```
+
+**Key details**:
+- Uses `Dockerfile.dev` for development mode
+- Hot reload enabled via volume mounts
+- Depends on backend service
+- Health check via HTTP request
+
+## Dockerfile details
+
+### Backend Dockerfile
+
+The backend uses a Python 3.11 slim image:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY server.py .
+COPY .env .
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/').read()"
+
+# Run application
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+**backend/Dockerfile:1-28**
+
+### Frontend Dockerfile
+
+The frontend uses a multi-stage build for production:
+
+```dockerfile
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY public public
+COPY src src
+COPY craco.config.js tailwind.config.js postcss.config.js ./
+COPY plugins plugins
+
+RUN echo "REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL:-http://localhost:8000}" > .env
+RUN npm run build
+
+# Production image
+FROM node:18-alpine
+
+WORKDIR /app
+
+RUN npm install -g serve
+COPY --from=builder /app/build ./build
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+
+CMD ["serve", "-s", "build", "-l", "3000"]
+```
+
+**frontend/Dockerfile:1-44**
+
+## Common operations
+
+### View logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f mongo
+```
+
+### Stop services
+
+```bash
+# Stop services (keeps data)
+docker-compose down
+
+# Stop and remove volumes (deletes database data)
+docker-compose down -v
+```
+
+### Rebuild after code changes
+
+```bash
+# Rebuild specific service
+docker-compose build backend
+
+# Rebuild all services
+docker-compose build
+
+# Rebuild and restart
+docker-compose up --build
+```
+
+### Access container shell
+
+```bash
+# Backend
+docker-compose exec backend sh
+
+# Frontend
+docker-compose exec frontend sh
+
+# MongoDB
+docker-compose exec mongo mongosh --username admin --password password
+```
+
+### Run tests in containers
+
+```bash
+# Backend tests
+docker-compose exec backend pytest
+
+# Backend tests with coverage
+docker-compose exec backend pytest --cov=server
+```
+
+## Health checks
+
+All services include health checks. You can view their status:
+
+```bash
+# Check service status
+docker-compose ps
+
+# View detailed health information
+docker inspect fork-backend --format='{{json .State.Health}}' | jq
+```
+
+## Networking
+
+Services communicate through the `fork-network` bridge network:
+
+- Backend accesses MongoDB at `mongodb://mongo:27017`
+- Frontend accesses backend at `http://backend:8000` (internal)
+- From your host machine, use `localhost` and the exposed ports
+
+## Volumes
+
+The `mongo_data` volume persists MongoDB data between container restarts:
+
+```bash
+# List volumes
+docker volume ls
+
+# Inspect volume
+docker volume inspect the-fork_mongo_data
+
+# Remove volume (deletes all data)
+docker volume rm the-fork_mongo_data
+```
+
+## Troubleshooting
+
+### MongoDB connection error
+
+```bash
+# Check MongoDB logs
+docker-compose logs mongo
+
+# Verify credentials
+docker-compose exec mongo mongosh \
+  --username admin \
+  --password password \
+  --authenticationDatabase admin
+```
+
+### Backend not starting
+
+```bash
+# Check logs for errors
+docker-compose logs backend
+
+# Verify environment variables
+docker-compose exec backend env | grep MONGO
+```
+
+### Frontend can't connect to backend
+
+```bash
+# Verify backend is running
+docker-compose ps backend
+
+# Test connection from frontend container
+docker-compose exec frontend wget http://backend:8000/api/
+```
+
+### Port already in use
+
+If you see an error like "port is already allocated":
+
+```bash
+# Find process using the port
+lsof -i :3000
+lsof -i :8000
+lsof -i :27017
+
+# Kill the process or change ports in docker-compose.yml
+# Example: "3001:3000" maps host port 3001 to container port 3000
+```
+
+## Production considerations
+
+For production deployments, you should:
+
+1. Use the production `Dockerfile` (not `Dockerfile.dev`) for the frontend
+2. Remove volume mounts that expose source code
+3. Set explicit resource limits
+4. Use secrets management for sensitive values
+5. Configure proper logging and monitoring
+
+See the [Production deployment](/deployment/production) guide for more details.

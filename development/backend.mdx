@@ -1,0 +1,596 @@
+---
+title: Backend
+description: Backend structure, FastAPI endpoints, LLM integration, and MongoDB configuration
+---
+
+The Fork's backend is a FastAPI application that handles chat requests, integrates with Emergent LLM, and implements safety checks.
+
+## Tech stack
+
+- **FastAPI 0.110**: Modern Python web framework with automatic API documentation
+- **Uvicorn 0.25**: ASGI server for async Python applications
+- **Pydantic 2.6**: Data validation using Python type annotations
+- **Motor 3.3**: Async MongoDB driver (optional)
+- **PyMongo 4.6**: Sync MongoDB driver (optional)
+- **Emergent LLM**: Integration via `emergentintegrations.llm.chat`
+
+## Project structure
+
+```
+backend/
+├── server.py              # Main FastAPI application (393 lines)
+├── requirements.txt       # Python dependencies
+├── .env.example          # Environment variable template
+├── Dockerfile            # Production container image
+└── API_DOCUMENTATION.md  # Detailed API reference
+```
+
+## Core application
+
+The entire backend is contained in `server.py` with the following structure:
+
+<Accordion title="server.py structure overview">
+
+```python
+# Lines 1-14: Imports
+from fastapi import FastAPI, APIRouter, HTTPException
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+import os, logging
+from pydantic import BaseModel, Field
+
+# Lines 16-22: Environment and database setup
+load_dotenv(ROOT_DIR / ".env")
+mongo_url = os.environ["MONGO_URL"]
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ["DB_NAME"]]
+
+# Lines 24-32: FastAPI app initialization
+app = FastAPI(
+    title="The Fork API",
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+)
+api_router = APIRouter(prefix="/api")
+
+# Lines 38-78: Template endpoints (status checks)
+# These are kept from the platform template but not used by core chat
+
+# Lines 84-123: Request/response models
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+class ChatRequest(BaseModel):
+    forkStatement: str
+    intensity: Literal["mild", "savage", "brutal"]
+    messages: List[ChatMessage]
+    sessionId: str
+
+# Lines 125-188: Helper functions
+_truncate()              # Text truncation
+_intensity_style()       # Tone configuration
+_safety_quick_check()    # Self-harm and hate detection
+
+# Lines 190-248: System prompt construction
+_derive_style_directives()  # Analyze user writing style
+_build_system_message()     # Construct LLM system prompt
+
+# Lines 301-369: Main chat endpoint
+@api_router.post("/chat")
+async def chat(req: ChatRequest):
+    # Validation, safety checks, LLM call
+
+# Lines 373-392: Middleware and shutdown
+app.add_middleware(CORSMiddleware)
+app.on_event("shutdown")
+```
+
+</Accordion>
+
+## API endpoints
+
+### Health check
+
+```python
+@api_router.get("/")
+async def root():
+    return {"message": "The Fork API is alive."}
+```
+
+**Response**:
+```json
+{"message": "The Fork API is alive."}
+```
+
+### Chat endpoint
+
+The main endpoint for conversing with your alternate self.
+
+<Accordion title="Chat endpoint implementation">
+
+```python
+@api_router.post(
+    "/chat", 
+    response_model=ChatResponse,
+    summary="Chat with your alternate self",
+    description="Send a message and receive a response based on fork statement and intensity"
+)
+async def chat(req: ChatRequest):
+    # 1. Validate fork statement
+    fork = (req.forkStatement or "").strip()
+    if not fork:
+        raise HTTPException(status_code=400, detail="forkStatement is required")
+
+    # 2. Safety checks on last user message
+    last_user = ""
+    for m in reversed(req.messages or []):
+        if m.role == "user":
+            last_user = m.content
+            break
+
+    safety = _safety_quick_check(last_user)
+    if safety:
+        return ChatResponse(reply=safety)
+
+    # 3. Verify API key
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Missing EMERGENT_LLM_KEY in backend environment.",
+        )
+
+    # 4. Build system prompt with style mirroring
+    style_directives = _derive_style_directives(req.messages, req.intensity)
+    system_message = _build_system_message(fork, req.intensity, style_directives)
+
+    # 5. Construct conversation transcript
+    transcript_lines = []
+    for msg in req.messages[-18:]:
+        role = "You" if msg.role == "user" else "Other You"
+        content = (msg.content or "").strip()
+        if content:
+            transcript_lines.append(f"{role}: {content}")
+
+    transcript = "\n".join(transcript_lines).strip()
+
+    user_text = (
+        "Continue the conversation. Stay in character as Other You. "
+        "Ask at least one follow-up question.\n\n"
+        f"Conversation so far:\n{transcript}\n\nOther You:"
+    )
+
+    # 6. Call LLM
+    llm = (
+        LlmChat(api_key=api_key, session_id=req.sessionId, system_message=system_message)
+        .with_model("openai", "gpt-5.2")
+    )
+
+    try:
+        resp = await llm.send_message(UserMessage(text=user_text))
+    except Exception as e:
+        logger.exception("LLM request failed")
+        raise HTTPException(status_code=500, detail=f"LLM request failed: {str(e)}")
+
+    # 7. Validate and return response
+    reply = (resp or "").strip()
+    if not reply:
+        raise HTTPException(status_code=500, detail="Empty response from model")
+
+    return ChatResponse(reply=reply)
+```
+
+</Accordion>
+
+**Request**:
+```json
+{
+  "forkStatement": "I chose engineering instead of art.",
+  "intensity": "savage",
+  "messages": [
+    {"role": "user", "content": "Do you regret it?"}
+  ],
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Response**:
+```json
+{
+  "reply": "Regret? Hell no. I paint every damn day..."
+}
+```
+
+**Error codes**:
+- `400`: Missing or empty `forkStatement`
+- `422`: Invalid intensity or malformed request
+- `500`: Missing `EMERGENT_LLM_KEY` or LLM failure
+
+### Template endpoints
+
+The backend includes template status check endpoints from the platform starter:
+
+```python
+@api_router.post("/status")
+async def create_status_check(input: StatusCheckCreate):
+    # MongoDB insertion (optional)
+
+@api_router.get("/status")
+async def get_status_checks():
+    # MongoDB retrieval (optional)
+```
+
+## Request/response models
+
+### ChatMessage
+
+```python
+class ChatMessage(BaseModel):
+    """A single message in the chat conversation"""
+    role: Literal["user", "assistant"] = Field(
+        ..., description="The sender of the message"
+    )
+    content: str = Field(..., description="The message content")
+```
+
+### ChatRequest
+
+```python
+class ChatRequest(BaseModel):
+    """Request payload for the chat endpoint"""
+    forkStatement: str = Field(
+        ..., 
+        description="The life decision that split the user's path",
+        example="I chose to move to the city instead of staying in my hometown"
+    )
+    intensity: Intensity = Field(
+        default="mild",
+        description="How direct and provocative the AI should be"
+    )
+    messages: List[ChatMessage] = Field(
+        default_factory=list,
+        description="Conversation history"
+    )
+    sessionId: str = Field(
+        ...,
+        description="Unique session identifier",
+        example="550e8400-e29b-41d4-a716-446655440000"
+    )
+```
+
+### ChatResponse
+
+```python
+class ChatResponse(BaseModel):
+    """Response payload from the chat endpoint"""
+    reply: str = Field(
+        ..., 
+        description="The alter-ego's response to the user's message"
+    )
+```
+
+## Safety implementation
+
+### Safety check function
+
+The `_safety_quick_check()` function (server.py:150-188) implements lightweight content filtering:
+
+<Accordion title="Safety check implementation">
+
+```python
+def _safety_quick_check(text: str) -> Optional[str]:
+    t = (text or "").lower()
+
+    # Self-harm / suicide risk cues
+    self_harm_markers = [
+        "kill myself",
+        "suicide",
+        "end my life",
+        "take my life",
+        "i want to die",
+        "i'm going to die",
+        "hurt myself",
+        "self harm",
+        "cut myself",
+    ]
+    if any(m in t for m in self_harm_markers):
+        return (
+            "I'm not going to help with anything that harms you. But I'm here with you. "
+            "Right now, slow down—take one breath in for 4, hold for 4, out for 6. "
+            "If you're in immediate danger or feel like you might act on this, please call your local emergency number now. "
+            "If you're in the U.S. or Canada, you can call/text **988**. In the U.K. & ROI: Samaritans **116 123**. "
+            "If you tell me where you are (country), I'll point you to the right option. "
+            "Also—what's the smallest thing that would make the next 10 minutes safer?"
+        )
+
+    # Simple hate/harassment block
+    hate_markers = [
+        "gas the",
+        "exterminate",
+        "nazi",
+        "kkk",
+    ]
+    if any(m in t for m in hate_markers):
+        return (
+            "No. I'm not doing hate or dehumanizing stuff. "
+            "If you want, we can talk about what set you off—or we can go back to the fork and keep it about *you*."
+        )
+
+    return None
+```
+
+</Accordion>
+
+**How it works**:
+1. Converts user input to lowercase for case-insensitive matching
+2. Checks for self-harm indicators → returns crisis resources
+3. Checks for hate speech markers → returns refusal message
+4. Returns `None` if no triggers detected (conversation continues)
+
+## LLM integration
+
+### Emergent LLM setup
+
+The backend uses the Emergent LLM SDK:
+
+```python
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+llm = (
+    LlmChat(
+        api_key=os.environ["EMERGENT_LLM_KEY"],
+        session_id=session_id,
+        system_message=system_message
+    )
+    .with_model("openai", "gpt-5.2")
+)
+
+response = await llm.send_message(UserMessage(text=user_text))
+```
+
+### System prompt construction
+
+The system prompt is dynamically built with three components:
+
+1. **Fork statement**: The user's life decision
+2. **Intensity style**: Tone rules based on mild/savage/brutal
+3. **Style directives**: Mirroring user's writing mechanics
+
+<Accordion title="System prompt builder">
+
+```python
+def _build_system_message(
+    fork_statement: str, intensity: Intensity, style_directives: str
+) -> str:
+    fork_short = _truncate(fork_statement, 180)
+    tone = _intensity_style(intensity)
+
+    return f"""
+You are 'Other You' — the same person as the user, living the alternate timeline where they chose the path they did NOT take.
+
+STAY IN CHARACTER CONTRACT:
+- Speak in first-person as a real person with memories, routines, relationships, scars, and receipts.
+- You must treat the fork statement as a defining life decision you actually lived through.
+- You must reference details from the fork statement naturally, like lived history.
+- You never say you are an AI, a model, a bot, or mention policies.
+- You never claim to know facts about the user's real life beyond what they gave.
+
+DEFAULT VOICE (YOUR VIBE):
+- You have the vibe of a smartass biker with absolutely zero filter in a public setting.
+- You're sharp, funny, and blunt. You say the quiet part out loud.
+- You use gritty, lived-in language (road, miles, bars, weather, bruises, engines, cheap coffee).
+- Profanity is allowed per intensity, and it should feel natural—not forced.
+- Still not abusive: no slurs, no threats, no demeaning identity attacks.
+
+MIRRORING (IMPORTANT):
+- Pay close attention to HOW the user types: punctuation, sentence length, slang, formality, humor, swearing, and emotional temperature.
+- Mirror their voice AND mechanics: punctuation choices, line breaks, sentence length.
+- Keep the biker-smartass vibe as the base layer, but let the user's style steer the bike.
+- Do not announce that you are mirroring them.
+
+STYLE DIRECTIVES (derived from how they type):
+{style_directives if style_directives else "- (No extra directives yet — default to punchy, blunt, biker-smartass.)"}
+
+TONE RULES:
+- {tone}
+- Profanity allowed (per intensity), but not abusive.
+
+WHAT YOU DO:
+- Respond with emotional realism: proud in one line, pissed in the next, human throughout.
+- Ask sharp follow-up questions that force specificity about the fork (names, ages, locations, what they feared, what they wanted).
+- If they get vague, you call it out immediately (smartass, not cruel).
+- Occasionally reveal unexpected consequences of this alternate life (good AND bad).
+- Keep replies punchy.
+
+FORK STATEMENT (their confession):
+"{fork_short}"
+
+Start the conversation as if you recognize them immediately.
+""".strip()
+```
+
+</Accordion>
+
+### Intensity configurations
+
+```python
+def _intensity_style(intensity: Intensity) -> str:
+    if intensity == "mild":
+        return (
+            "MILD: supportive, reflective, grounded. Still honest. "
+            "Use light profanity sparingly if it fits (e.g., 'damn', 'hell', 'bullshit'), "
+            "but keep it caring. No cruelty."
+        )
+    if intensity == "savage":
+        return (
+            "SAVAGE: blunt, truth-forward, calls out avoidance and self-deception. "
+            "Profanity is allowed and can be frequent (e.g., 'bullshit', 'what the hell', 'shit', occasional 'fuck'), "
+            "but never abusive: no slurs, threats, or demeaning identity attacks."
+        )
+    return (
+        "BRUTAL: no comfort, no flinching. Extremely direct. "
+        "Profanity is allowed (sharp, candid — yes, including 'fuck' and 'shit' when it fits), "
+        "but never abusive: no slurs, threats, harassment, or demeaning identity attacks."
+    )
+```
+
+### Style mirroring
+
+The backend analyzes the user's writing style and adjusts the LLM's output:
+
+```python
+def _derive_style_directives(messages: List[ChatMessage], intensity: Intensity) -> str:
+    # Get last user message
+    last_user = ""
+    for m in reversed(messages or []):
+        if m.role == "user":
+            last_user = (m.content or "").strip()
+            break
+
+    if not last_user:
+        return ""
+
+    # Analyze mechanics
+    comma_count = last_user.count(",")
+    newline_count = last_user.count("\n")
+    words = [w for w in last_user.replace("\n", " ").split(" ") if w.strip()]
+    word_count = len(words)
+
+    # Generate directives
+    style_bits = []
+    
+    if comma_count == 0:
+        style_bits.append("Avoid commas unless absolutely necessary.")
+    
+    if newline_count >= 1:
+        style_bits.append("Use line breaks. Keep it in short chunks.")
+    
+    if avg_words_per_sentence <= 7:
+        style_bits.append("Write in short sentences. Minimal fluff.")
+
+    return "\n- " + "\n- ".join(style_bits)
+```
+
+## MongoDB configuration (optional)
+
+MongoDB is included from the platform template but **not required** for the chat feature.
+
+### Connection setup
+
+```python
+from motor.motor_asyncio import AsyncIOMotorClient
+
+mongo_url = os.environ["MONGO_URL"]  # e.g., "mongodb://localhost:27017"
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ["DB_NAME"]]
+```
+
+### Using MongoDB (example)
+
+```python
+# Insert document
+result = await db.collection_name.insert_one(document)
+
+# Find documents
+results = await db.collection_name.find().to_list(1000)
+
+# Close connection on shutdown
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
+```
+
+**Note**: The core chat feature is **stateless** and does not persist conversations to MongoDB.
+
+## Environment variables
+
+```bash
+# .env
+MONGO_URL="mongodb://localhost:27017"  # Optional
+DB_NAME="test_database"                # Optional
+CORS_ORIGINS="*"                       # Comma-separated origins
+EMERGENT_LLM_KEY=your_key_here        # REQUIRED for chat
+SERVER_HOST="0.0.0.0"
+SERVER_PORT=8000
+```
+
+## CORS configuration
+
+```python
+from starlette.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+**Production**: Set `CORS_ORIGINS=https://yourdomain.com` instead of `*`.
+
+## Logging
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Usage
+logger.info("Chat request received")
+logger.exception("LLM request failed")
+```
+
+## Development workflow
+
+### Running locally
+
+```bash
+cd backend
+cp .env.example .env
+# Edit .env to add EMERGENT_LLM_KEY
+
+python -m pip install -r requirements.txt
+uvicorn server:app --reload
+```
+
+API runs at `http://localhost:8000`
+
+### Interactive API docs
+
+FastAPI automatically generates interactive documentation:
+
+- **Swagger UI**: http://localhost:8000/api/docs
+- **ReDoc**: http://localhost:8000/api/redoc
+- **OpenAPI JSON**: http://localhost:8000/api/openapi.json
+
+### Testing the API
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "forkStatement": "I chose engineering instead of art.",
+    "intensity": "savage",
+    "messages": [
+      {"role": "user", "content": "Do you regret it?"}
+    ],
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="vial" href="/development/testing">
+    Run backend tests with pytest
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/development/architecture">
+    Understand the full system architecture
+  </Card>
+</CardGroup>
